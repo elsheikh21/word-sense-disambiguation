@@ -1,0 +1,12 @@
+.idea
+.sonarlint
+.vscode
+.ipynb_checkpoints
+Homework_3_nlp.pdf
+logging
+resources
+code/__pycache__
+code/.ipynb_checkpoints
+/logs
+data/
+papers/

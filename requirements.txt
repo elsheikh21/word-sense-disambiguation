@@ -1,0 +1,7 @@
+numpy==1.16.2
+tensorflow==1.12
+tensorflow-gpu==1.12
+keras==2.2.5
+matplotlib==3.0.2
+json==2.0.9
+nltk==3.4
