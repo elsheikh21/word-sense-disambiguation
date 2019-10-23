@@ -1,4 +1,7 @@
+import logging
+
 import matplotlib.pyplot as plt
+from tensorflow.keras.utils import plot_model
 
 
 def plot_history(history, save_to=None):
@@ -51,3 +54,13 @@ def plot_history(history, save_to=None):
     if save_to is not None:
         plt.savefig(f'{save_to}_acc.png')
     plt.show()
+
+
+def visualize_plot_mdl(visualize, plot, model):
+    if visualize:
+        print(f'\n{model._name} Model Summary: \n')
+        model.summary()
+    if plot:
+        plot_model(model, to_file=f'../resources/{model._name}_Model.png', show_shapes=True)
+        logging.info(f"{model._name} model image saved")
+    logging.info(f"{model._name} model is created & compiled")

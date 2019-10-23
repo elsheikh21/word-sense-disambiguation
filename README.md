@@ -100,6 +100,7 @@
 - It is basically a sequential model, starts with an embedding layer followed by a Bidirectional LSTM, and ends with a TimeDistributed Dense layer (num of classes depends on the output vocabulary size, which is the word tokens + sense tokens)
 
 ![BiLSTM Model](readme_related/BiLSTM_model.png)
+![BiLSTM Model](readme_related/baseline_model.png)
 
 - This model can be a stacked bidirectional LSTM if we added another BiLSTM layer
 

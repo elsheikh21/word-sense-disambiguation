@@ -32,6 +32,7 @@ def parse_args():
 
 
 def baseline_model(vocabulary_size, config_params,
+                   pos_vocab_size, lex_vocab_size,
                    output_size, tokenizer=None,
                    visualize=False, plot=False):
     hidden_size = int(config_params['hidden_size'])
@@ -64,10 +65,19 @@ def baseline_model(vocabulary_size, config_params,
                     name='Candidate_Synsets_Mask')
 
     logits_mask = Add()([logits, in_mask])
-    output = Softmax()(logits_mask)
 
-    # TODO: CHECK SHOULD IT BE LOGITS_MASK OR IN_MASK
-    model = Model(inputs=[in_sentences, in_mask], outputs=output, name="Baseline")
+    pos_logits = TimeDistributed(Dense(pos_vocab_size),
+                                 name='POS_logits')(bilstm)
+    lex_logits = TimeDistributed(Dense(lex_vocab_size),
+                                 name='LEX_logits')(bilstm)
+
+    wsd_output = Softmax(name="WSD output")(logits_mask)
+    pos_output = Softmax(name="POS output")(pos_logits)
+    lex_output = Softmax(name="LEX output")(lex_logits)
+
+    mdl = Model(inputs=[in_sentences, logits_mask],
+                outputs=[wsd_output, pos_output, lex_output],
+                name='BiLSTM_MultiTask')
 
     model.compile(loss="sparse_categorical_crossentropy",
                   optimizer=Adadelta(), metrics=["acc"])
@@ -78,6 +88,7 @@ def baseline_model(vocabulary_size, config_params,
 
 
 def attention_model(vocabulary_size, config_params, output_size,
+                    pos_vocab_size, lex_vocab_size,
                     depth=2, visualize=False,
                     plot=False, tokenizer=None):
     hidden_size = config_params['hidden_size']
@@ -112,12 +123,18 @@ def attention_model(vocabulary_size, config_params, output_size,
     logits = TimeDistributed(Dense(output_size))(attention)
     logits_mask = Add()([logits, in_mask])
 
-    output = Softmax()(logits_mask)
+    pos_logits = TimeDistributed(Dense(pos_vocab_size),
+                                 name='POS_logits')(attention)
+    lex_logits = TimeDistributed(Dense(lex_vocab_size),
+                                 name='LEX_logits')(attention)
 
-    model = Model(inputs=[in_sentences, in_mask], outputs=output, name="Attention")
+    wsd_output = Softmax(name="WSD output")(logits_mask)
+    pos_output = Softmax(name="POS output")(pos_logits)
+    lex_output = Softmax(name="LEX output")(lex_logits)
 
-    model.compile(loss="sparse_categorical_crossentropy",
-                  optimizer=Adadelta(), metrics=["acc"])
+    mdl = Model(inputs=[in_sentences, logits_mask],
+                outputs=[wsd_output, pos_output, lex_output],
+                name='BiLSTM_ATT_MultiTask')
 
     visualize_plot_mdl(visualize, plot, model)
 
@@ -125,89 +142,76 @@ def attention_model(vocabulary_size, config_params, output_size,
 
 
 def seq2seq_model(vocabulary_size, config_params, output_size,
-                  tokenizer=None, visualize=False, plot=False):
-    drop, rdrop = 0.2, 0.2
+                  pos_vocab_size, lex_vocab_size, tokenizer=None,
+                  visualize=False, plot=False):
     hidden_size = int(config_params['hidden_size'])
     batch_size = int(config_params['batch_size'])
+    embedding_size = int(config_params['embedding_size'])
 
     input_type = 'string' if tokenizer is not None else None
-    encoder_inputs = Input(shape=(None,), dtype=input_type,
-                           batch_size=batch_size)
-    in_mask = Input(shape=(None, output_size),
-                    batch_size=batch_size, name='Candidate_Synsets_Mask')
+    in_sentences = Input(shape=(None,), dtype=input_type,
+                         batch_size=batch_size, name='Input')
 
     if tokenizer is not None:
-        encoder_embeddings = ElmoEmbeddingLayer()(encoder_inputs)
+        embeddings = ElmoEmbeddingLayer()(in_sentences)
         embedding_size = 1024
     else:
-        embedding_size = int(config_params['embedding_size'])
-        encoder_embeddings = Embedding(
-            input_dim=vocabulary_size, output_dim=embedding_size,
-            mask_zero=True, name="Embeddings")(encoder_inputs)
-
-    encoder_bilstm = Bidirectional(LSTM(hidden_size, dropout=drop,
-                                        recurrent_dropout=rdrop,
-                                        return_sequences=True,
-                                        return_state=True,
-                                        input_shape=(
-                                            None, None, embedding_size)
-                                        ),
-                                   merge_mode='sum',
-                                   name='Encoder_BiLSTM_1')(encoder_embeddings)
-
-    encoder_bilstm2 = Bidirectional(LSTM(hidden_size, dropout=drop,
-                                         recurrent_dropout=rdrop,
-                                         return_sequences=True,
-                                         return_state=True,
-                                         input_shape=(
-                                             None, None, embedding_size)
-                                         ),
-                                    merge_mode='sum', name='Encoder_BiLSTM_2')
-
-    (encoder_outputs, forward_h, forward_c, backward_h,
-     backward_c) = encoder_bilstm2(encoder_bilstm)
-
+        embeddings = Embedding(input_dim=vocabulary_size,
+                               output_dim=embedding_size,
+                               mask_zero=True,
+                               name="Embeddings")(in_sentences)
+    bilstm, forward_h, _, backward_h, _ = Bidirectional(LSTM(hidden_size, return_sequences=True,
+                                                             return_state=True, dropout=0.2, recurrent_dropout=0.2,
+                                                             input_shape=(None, None, embedding_size)),
+                                                        merge_mode='sum',
+                                                        name='Encoder_BiLSTM')(embeddings)
     state_h = Concatenate()([forward_h, backward_h])
-    state_c = Concatenate()([forward_c, backward_c])
-    encoder_states = [state_h, state_c]
 
-    encoder_attention = SeqSelfAttention(
-        attention_activation='sigmoid', name='Attention')(encoder_outputs)
+    encoder_attention = SeqSelfAttention(attention_activation='sigmoid',
+                                         name='Attention')([bilstm, state_h])
 
-    decoder_fwd_lstm, _, _ = LSTM(hidden_size, dropout=drop,
-                                  recurrent_dropout=rdrop,
+    concat = Concatenate()([encoder_attention, bilstm])
+
+    decoder_fwd_lstm, _, _ = LSTM(hidden_size, dropout=0.2,
+                                  recurrent_dropout=0.2,
                                   return_sequences=True,
-                                  return_state=True,
                                   input_shape=(None, None, embedding_size),
-                                  name='Decoder_FWD_LSTM')(encoder_attention,
-                                                           initial_state=[forward_h, backward_h])
+                                  name='Decoder_FWD_LSTM')(concat)
 
     decoder_bck_lstm, _, _ = LSTM(hidden_size,
-                                  dropout=drop,
-                                  recurrent_dropout=rdrop,
+                                  dropout=0.2,
+                                  recurrent_dropout=0.2,
                                   return_sequences=True,
-                                  return_state=True,
                                   input_shape=(None, None, embedding_size),
                                   go_backwards=True,
                                   name='Decoder_BWD_LSTM')(decoder_fwd_lstm)
 
     decoder_bilstm = Concatenate()([decoder_fwd_lstm, decoder_bck_lstm])
 
-    decoder_output = TimeDistributed(Dense(output_size),
-                                     name='TimeDist_Dense')(decoder_bilstm)
+    logits = TimeDistributed(Dense(output_size), name='WSD_logits')(decoder_bilstm)
+    in_mask = Input(shape=(None, output_size),
+                    batch_size=batch_size, name='Candidate_Synsets_Mask')
 
-    logits_mask = Add()([decoder_output, in_mask])
+    logits_mask = Add(name="Masked logits")([logits, in_mask])
+    pos_logits = TimeDistributed(Dense(pos_vocab_size),
+                                 name='POS_logits')(decoder_bilstm)
+    lex_logits = TimeDistributed(Dense(lex_vocab_size),
+                                 name='LEX_logits')(decoder_bilstm)
 
-    decoder_outputs = Softmax()(logits_mask)
+    wsd_output = Softmax(name="WSD output")(logits_mask)
+    pos_output = Softmax(name="POS output")(pos_logits)
+    lex_output = Softmax(name="LEX output")(lex_logits)
 
-    model = Model([encoder_inputs, in_mask], outputs=decoder_outputs, name="Seq2Seq_Attention")
+    mdl = Model(inputs=[in_sentences, logits_mask],
+                outputs=[wsd_output, pos_output, lex_output],
+                name='Seq2Seq_MultiTask')
 
-    model.compile(loss="sparse_categorical_crossentropy",
-                  optimizer=Adadelta(), metrics=["acc"])
+    mdl.compile(loss="sparse_categorical_crossentropy",
+                optimizer=Adadelta(), metrics=["acc"])
 
-    visualize_plot_mdl(visualize, plot, model)
+    visualize_plot_mdl(visualize, plot, mdl)
 
-    return model
+    return mdl
 
 
 if __name__ == "__main__":
@@ -235,16 +239,20 @@ if __name__ == "__main__":
     model = None
     tokenizer = tokenizer if elmo else None
 
+    # TODO: REFACTOR THIS SCRIPT PROPERLY.
+    # TODO: GET POS & LEX VOCAB SIZE
     if params["model_type"] == "baseline":
         model = baseline_model(vocabulary_size, config_params,
+                               pos_vocab_size, lex_vocab_size,
                                output_size, tokenizer=tokenizer)
         history = train_model(model, dataset, config_params, elmo)
     elif params["model_type"] == "attention":
-        attention_model = attention_model(vocabulary_size,
-                                          config_params, output_size,
-                                          tokenizer=tokenizer)
+        attention_model = attention_model(vocabulary_size, config_params,
+                                          pos_vocab_size, lex_vocab_size,
+                                          output_size, tokenizer=tokenizer)
         attention_history = train_model(attention_model, dataset, config_params)
     elif params["model_type"] == "seq2seq":
         seq2seq_model = seq2seq_model(vocabulary_size, config_params,
+                                      pos_vocab_size, lex_vocab_size,
                                       output_size, tokenizer=tokenizer)
         seq2seq_history = train_model(seq2seq_model, dataset, config_params)

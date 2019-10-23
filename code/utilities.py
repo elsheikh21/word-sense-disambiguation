@@ -4,12 +4,11 @@ import os
 import pickle
 import random
 import warnings
+import zipfile
 
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.backend import set_session
-from tensorflow.keras.preprocessing.text import Tokenizer
-import zipfile
 from tensorflow.keras.utils import get_file
 from tqdm import tqdm
 
@@ -133,68 +132,6 @@ def dataset_summarize(dataset):
              \nTotal Size of vocab: {output_size}.''', end=ender)
 
 
-def load_raw_data(save_to_paths):
-    sentences_list, labeled_sentences_list, masks_builder = [], [], []
-    if (save_to_paths is not None and
-            os.path.exists(save_to_paths[0]) and
-            os.path.getsize(save_to_paths[0]) > 0 and
-            os.path.exists(save_to_paths[1]) and
-            os.path.getsize(save_to_paths[1]) > 0 and
-            os.path.exists(save_to_paths[2]) and
-            os.path.getsize(save_to_paths[2]) > 0):
-        sentences_list = load_pickle(save_to_paths[0])
-        labeled_sentences_list = load_pickle(save_to_paths[1])
-        masks_builder = load_pickle(save_to_paths[2])
-        logging.info("Parsed Dataset is loaded")
-    return sentences_list, labeled_sentences_list, masks_builder
-
-
-def save_raw_data(save_to_paths, sentences_list, labeled_sentences_list, masks_builder):
-    if save_to_paths is not None:
-        save_x_to, save_y_to = save_to_paths[0], save_to_paths[1]
-        save_mask_to = save_to_paths[2]
-        save_pickle(save_x_to, sentences_list)
-        save_pickle(save_y_to, labeled_sentences_list)
-        save_pickle(save_mask_to[2], masks_builder)
-        logging.info("Saved the dataset")
-
-
-def load_processed_data(save_data, save_tokenizer):
-    data_x, data_y, tokenizer = None, None, None
-    if (save_data[0] is not None
-            and os.path.exists(save_data[0])
-            and os.path.getsize(save_data[0]) > 0):
-        data_x = load_pickle(save_data[0])
-        logging.info("data_x is loaded")
-    if (save_data[1] is not None
-            and os.path.exists(save_data[1])
-            and os.path.getsize(save_data[1]) > 0):
-        data_y = load_pickle(save_data[1])
-        logging.info("data_y is loaded")
-
-    if (save_tokenizer is not None
-            and os.path.exists(save_tokenizer)
-            and os.path.getsize(save_tokenizer) > 0):
-        tokenizer = load_pickle(save_tokenizer)
-        logging.info("Tokenizer is loaded")
-    else:
-        filters = '!"#$%&()*+,-./;<=>?@[\\]^_`{|}~\'\t'
-        tokenizer = Tokenizer(filters=filters, oov_token='<OOV>', lower=True)
-
-    return data_x, data_y, tokenizer
-
-
-def save_processed_data(tokenizer, save_tokenizer,
-                        data_x, data_y, save_data):
-    if save_tokenizer is not None:
-        save_pickle(save_tokenizer, tokenizer)
-        logging.info("Tokenizer Saved")
-
-    if save_data is not None:
-        save_pickle(save_data[0], data_x)
-        save_pickle(save_data[1], data_y)
-        logging.info("Processed Data is Saved")
-
 def build_dict(file_name, save_to=None):
     """
     Builds and saves dictionary from text file
@@ -227,4 +164,3 @@ def download_unzip_dataset(download_from, download_to, clean_after=True):
             zip_file.extract(member=file)
     if clean_after:
         os.remove(file_path)
-

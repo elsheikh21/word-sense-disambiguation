@@ -1,7 +1,6 @@
-USE_CPU: False
-
 epochs: 1
 batch_size: 8
 hidden_size: 128
 embedding_size: 400
 use_elmo: True
+USE_CPU: False
