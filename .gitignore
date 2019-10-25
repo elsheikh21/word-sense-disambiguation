@@ -4,7 +4,7 @@
 .ipynb_checkpoints
 Homework_3_nlp.pdf
 logging
-resources
+resources/*.pkl
 code/__pycache__
 code/.ipynb_checkpoints
 /logs
