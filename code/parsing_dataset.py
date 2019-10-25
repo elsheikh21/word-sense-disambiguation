@@ -182,8 +182,22 @@ def process_dataset(data_x, data_y, pos_labeled_list,
 
         lex_tokenizer = Tokenizer(oov_token='factotum')
         lex_tokenizer.fit_on_texts(lex_labeled_list)
+        # This part had to be hard-coded, however, its generation was done using
+        # lex_regex = '/\[a-z]+(?:\.)\[a-z]+/'
+        # lex_vocab = list(set(lex_name for word in lex_tokenizer.word_index.keys()
+        # for lex_name in word if re.match(lex_regex, lex_name) and len(lex_name) > 3))
+        lex_vocab = ['adj.all', 'adj.pert', 'adj.ppl', 'adv.all', 'noun.Tops', 'noun.act',
+                     'noun.animal', 'noun.artifact', 'noun.attribute', 'noun.body', 'noun.cognition',
+                     'noun.communication', 'noun.event', 'noun.feeling', 'noun.food', 'noun.group', 'noun.location',
+                     'noun.motive', 'noun.object', 'noun.person', 'noun.phenomenon', 'noun.plant', 'noun.possession',
+                     'noun.process', 'noun.quantity', 'noun.relation', 'noun.shape', 'noun.state', 'noun.substance',
+                     'noun.time', 'verb.body', 'verb.change', 'verb.cognition', 'verb.communication',
+                     'verb.competition', 'verb.consumption', 'verb.contact', 'verb.creation', 'verb.emotion',
+                     'verb.motion', 'verb.perception', 'verb.possession', 'verb.social', 'verb.stative',
+                     'verb.weather', 'factotum']
+        lex_tokenizer.word_index = (dict((w, i) for i, w in enumerate(lex_vocab, start=1)))
         lex_tokenizer.word_index.update({'<PAD>': 0})
-        lex_tokenizer.index_word.update({0: '<PAD>'})
+        lex_tokenizer.index_word = dict((i, w) for w, i in lex_tokenizer.word_index.items())
 
         if save_tokenizer is not None:
             save_pickle(save_tokenizer, tokenizer)
