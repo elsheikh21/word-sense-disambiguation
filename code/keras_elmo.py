@@ -1,5 +1,5 @@
 import tensorflow as tf
-import tensorflow.keras.backend as B
+import tensorflow.keras.backend as K
 import tensorflow_hub as hub
 from tensorflow.keras.backend import set_session
 from tensorflow.keras.layers import Layer
@@ -31,13 +31,13 @@ class ElmoEmbeddingLayer(Layer):
         super(ElmoEmbeddingLayer, self).build(input_shape)
 
     def call(self, x, mask=None):
-        return self.elmo(B.squeeze(B.cast(x, tf.string), axis=1),
+        return self.elmo(K.squeeze(K.cast(x, tf.string), axis=1),
                          as_dict=True,
                          signature='default',
                          )['elmo']
 
     def compute_mask(self, inputs, mask=None):
-        return B.not_equal(inputs, '<PAD>')
+        return K.not_equal(inputs, '<PAD>')
 
     def compute_output_shape(self, input_shape):
         return input_shape[0], input_shape[1], self.dimensions

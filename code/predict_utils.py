@@ -1,3 +1,4 @@
+import os
 import tensorflow.keras.backend as K
 from lxml.etree import iterparse
 from tqdm import tqdm
@@ -63,3 +64,21 @@ def f1_m(y_true, y_pred):
     precision = precision_m(y_true, y_pred)
     recall = recall_m(y_true, y_pred)
     return 2*((precision*recall)/(precision+recall+K.epsilon()))
+
+
+def build_bn2domains_dict(file_path):
+    babelnet2domains = dict()
+    with open(file_path, mode='r') as file:
+        lines = file.read().splitlines()
+        for line in tqdm(lines, desc='Building babelnet_domains mapping dict'):
+            bn, domain = line.split('\t')
+            babelnet2domains[bn] = domain
+
+    domains2babelnet = dict([[v, k] for k, v in babelnet2domains.items()])
+
+    return babelnet2domains, domains2babelnet
+
+
+if __name__ == '__main__':
+    file_path = os.path.join(os.getcwd(), 'resources', 'babelnet2wndomains.tsv')
+    babelnet_domains, domains_babelnet = build_bn2domains_dict(file_path)

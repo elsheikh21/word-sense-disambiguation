@@ -5,18 +5,17 @@ import yaml
 
 os.environ['TF_KERAS'] = '1'
 from keras_self_attention import SeqSelfAttention
-from tensorflow.keras.layers import (LSTM, Add, Bidirectional,
-                                     Concatenate, Dense, Embedding, Input,
-                                     Softmax, TimeDistributed)
-
-from tensorflow.keras.optimizers import Adadelta
+from tensorflow.keras.layers import (LSTM, Add, Bidirectional, Concatenate,
+                                     Dense, Embedding, Input, Softmax,
+                                     TimeDistributed)
 from tensorflow.keras.models import Model
+from tensorflow.keras.optimizers import Adadelta
 
 from keras_elmo import ElmoEmbeddingLayer
 from model_utils import visualize_plot_mdl
 from parsing_dataset import load_dataset
+from train_multitask import train_multitask_model
 from utilities import configure_tf, initialize_logger
-from train import train_model
 
 
 def parse_args():
@@ -71,13 +70,13 @@ def baseline_model(vocabulary_size, config_params,
     lex_logits = TimeDistributed(Dense(lex_vocab_size),
                                  name='LEX_logits')(bilstm)
 
-    wsd_output = Softmax(name="WSD output")(logits_mask)
-    pos_output = Softmax(name="POS output")(pos_logits)
-    lex_output = Softmax(name="LEX output")(lex_logits)
+    wsd_output = Softmax(name="WSD_output")(logits_mask)
+    pos_output = Softmax(name="POS_output")(pos_logits)
+    lex_output = Softmax(name="LEX_output")(lex_logits)
 
-    mdl = Model(inputs=[in_sentences, logits_mask],
-                outputs=[wsd_output, pos_output, lex_output],
-                name='BiLSTM_MultiTask')
+    model = Model(inputs=[in_sentences, in_mask],
+                  outputs=[wsd_output, pos_output, lex_output],
+                  name='BiLSTM_MultiTask')
 
     model.compile(loss="sparse_categorical_crossentropy",
                   optimizer=Adadelta(), metrics=["acc"])
@@ -128,13 +127,13 @@ def attention_model(vocabulary_size, config_params, output_size,
     lex_logits = TimeDistributed(Dense(lex_vocab_size),
                                  name='LEX_logits')(attention)
 
-    wsd_output = Softmax(name="WSD output")(logits_mask)
-    pos_output = Softmax(name="POS output")(pos_logits)
-    lex_output = Softmax(name="LEX output")(lex_logits)
+    wsd_output = Softmax(name="WSD_output")(logits_mask)
+    pos_output = Softmax(name="POS_output")(pos_logits)
+    lex_output = Softmax(name="LEX_output")(lex_logits)
 
-    mdl = Model(inputs=[in_sentences, logits_mask],
-                outputs=[wsd_output, pos_output, lex_output],
-                name='BiLSTM_ATT_MultiTask')
+    model = Model(inputs=[in_sentences, logits_mask],
+                  outputs=[wsd_output, pos_output, lex_output],
+                  name='BiLSTM_ATT_MultiTask')
 
     visualize_plot_mdl(visualize, plot, model)
 
@@ -188,7 +187,8 @@ def seq2seq_model(vocabulary_size, config_params, output_size,
 
     decoder_bilstm = Concatenate()([decoder_fwd_lstm, decoder_bck_lstm])
 
-    logits = TimeDistributed(Dense(output_size), name='WSD_logits')(decoder_bilstm)
+    logits = TimeDistributed(
+        Dense(output_size), name='WSD_logits')(decoder_bilstm)
     in_mask = Input(shape=(None, output_size),
                     batch_size=batch_size, name='Candidate_Synsets_Mask')
 
@@ -198,20 +198,20 @@ def seq2seq_model(vocabulary_size, config_params, output_size,
     lex_logits = TimeDistributed(Dense(lex_vocab_size),
                                  name='LEX_logits')(decoder_bilstm)
 
-    wsd_output = Softmax(name="WSD output")(logits_mask)
-    pos_output = Softmax(name="POS output")(pos_logits)
-    lex_output = Softmax(name="LEX output")(lex_logits)
+    wsd_output = Softmax(name="WSD_output")(logits_mask)
+    pos_output = Softmax(name="POS_output")(pos_logits)
+    lex_output = Softmax(name="LEX_output")(lex_logits)
 
-    mdl = Model(inputs=[in_sentences, logits_mask],
-                outputs=[wsd_output, pos_output, lex_output],
-                name='Seq2Seq_MultiTask')
+    model = Model(inputs=[in_sentences, logits_mask],
+                  outputs=[wsd_output, pos_output, lex_output],
+                  name='Seq2Seq_MultiTask')
 
-    mdl.compile(loss="sparse_categorical_crossentropy",
-                optimizer=Adadelta(), metrics=["acc"])
+    model.compile(loss="sparse_categorical_crossentropy",
+                  optimizer=Adadelta(), metrics=["acc"])
 
-    visualize_plot_mdl(visualize, plot, mdl)
+    visualize_plot_mdl(visualize, plot, model)
 
-    return mdl
+    return model
 
 
 if __name__ == "__main__":
@@ -235,24 +235,26 @@ if __name__ == "__main__":
     vocabulary_size = dataset.get("vocabulary_size")
     output_size = dataset.get("output_size")
     tokenizer = dataset.get("tokenizer")
+    pos_vocab_size = dataset.get("pos_vocab_size")
+    lex_vocab_size = dataset.get("lex_vocab_size")
 
     model = None
     tokenizer = tokenizer if elmo else None
 
-    # TODO: REFACTOR THIS SCRIPT PROPERLY.
-    # TODO: GET POS & LEX VOCAB SIZE
     if params["model_type"] == "baseline":
         model = baseline_model(vocabulary_size, config_params,
                                pos_vocab_size, lex_vocab_size,
                                output_size, tokenizer=tokenizer)
-        history = train_model(model, dataset, config_params, elmo)
+        history = train_multitask_model(model, dataset, config_params, elmo)
     elif params["model_type"] == "attention":
         attention_model = attention_model(vocabulary_size, config_params,
                                           pos_vocab_size, lex_vocab_size,
                                           output_size, tokenizer=tokenizer)
-        attention_history = train_model(attention_model, dataset, config_params)
+        attention_history = train_multitask_model(attention_model, dataset,
+                                                  config_params, elmo)
     elif params["model_type"] == "seq2seq":
         seq2seq_model = seq2seq_model(vocabulary_size, config_params,
                                       pos_vocab_size, lex_vocab_size,
                                       output_size, tokenizer=tokenizer)
-        seq2seq_history = train_model(seq2seq_model, dataset, config_params)
+        seq2seq_history = train_multitask_model(seq2seq_model, dataset,
+                                                config_params, elmo)

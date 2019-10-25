@@ -1,3 +1,4 @@
+import os
 import logging
 
 import matplotlib.pyplot as plt
@@ -61,6 +62,7 @@ def visualize_plot_mdl(visualize, plot, model):
         print(f'\n{model._name} Model Summary: \n')
         model.summary()
     if plot:
-        plot_model(model, to_file=f'../resources/{model._name}_Model.png', show_shapes=True)
+        img_path = os.path.join(os.getcwd(), 'resources', f'{model._name}_Model.png')
+        plot_model(model, to_file=img_path, show_shapes=True)
         logging.info(f"{model._name} model image saved")
     logging.info(f"{model._name} model is created & compiled")

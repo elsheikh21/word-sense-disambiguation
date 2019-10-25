@@ -66,7 +66,6 @@ def baseline_model(vocabulary_size, config_params,
     logits_mask = Add()([logits, in_mask])
     output = Softmax()(logits_mask)
 
-    # TODO: CHECK SHOULD IT BE LOGITS_MASK OR IN_MASK
     model = Model(inputs=[in_sentences, in_mask], outputs=output, name="Baseline")
 
     model.compile(loss="sparse_categorical_crossentropy",

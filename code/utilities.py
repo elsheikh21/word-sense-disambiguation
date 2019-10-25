@@ -80,7 +80,7 @@ def freq_and_max(data_x, data_y):
 
 def dataset_summarize(dataset):
     train_x, train_y = dataset.get('train_x'), dataset.get('train_y')
-    dev_x, dev_y = dataset.get('dev_x'), dataset.get('dev_y')
+    dev_x, dev_y = dataset.get('test_x'), dataset.get('test_y')
     tokenizer = dataset.get('tokenizer')
     del dataset
 
@@ -164,3 +164,61 @@ def download_unzip_dataset(download_from, download_to, clean_after=True):
             zip_file.extract(member=file)
     if clean_after:
         os.remove(file_path)
+
+
+def build_bn2wn_dict(file_path, save_to=None):
+    if save_to[0] is not None and os.path.exists(save_to[0]) and os.path.getsize(save_to[0]) > 0 and \
+            save_to[1] is not None and os.path.exists(save_to[1]) and os.path.getsize(save_to[1]) > 0:
+        babelnet_wordnet = load_pickle(save_to[0])
+        wordnet_babelnet = load_pickle(save_to[1])
+        logging.info("Dictionary is loaded")
+        return babelnet_wordnet, wordnet_babelnet
+
+    babelnet_wordnet = dict()
+    with open(file_path, mode='r') as file:
+        lines = file.read().splitlines()
+        for line in tqdm(lines, desc='Building BN_WN mapping dict'):
+            bn, wn = line.split('\t')
+            babelnet_wordnet[bn] = wn
+
+    wordnet_babelnet = dict([[v, k] for k, v in babelnet_wordnet.items()])
+
+    if save_to[0] is not None and save_to[1] is not None:
+        save_pickle(save_to[0], babelnet_wordnet)
+        save_pickle(save_to[1], wordnet_babelnet)
+    logging.info("Dictionary is saved")
+
+    return babelnet_wordnet, wordnet_babelnet
+
+
+def build_bn2lex_dict(file_path, save_to=None):
+    if save_to[0] is not None and os.path.exists(save_to[0]) and os.path.getsize(save_to[0]) > 0 and \
+            save_to[1] is not None and os.path.exists(save_to[1]) and os.path.getsize(save_to[1]) > 0:
+        babelnet_lex = load_pickle(save_to[0])
+        lex_babelnet = load_pickle(save_to[1])
+        logging.info("Dictionary is loaded")
+        return babelnet_lex, lex_babelnet
+
+    babelnet_lex = dict()
+    with open(file_path, mode='r') as file:
+        lines = file.read().splitlines()
+        for line in tqdm(lines, desc='Building bn_lex mapping dict'):
+            bn, lex = line.split('\t')
+            babelnet_lex[bn] = lex
+
+    lex_babelnet = dict([[v, k] for k, v in babelnet_lex.items()])
+
+    if save_to[0] is not None and save_to[1] is not None:
+        save_pickle(save_to[0], babelnet_lex)
+        save_pickle(save_to[1], lex_babelnet)
+    logging.info("Dictionaries are saved")
+
+    return babelnet_lex, lex_babelnet
+
+
+if __name__ == '__main__':
+    file_path = os.path.join(os.getcwd(), 'resources', 'babelnet2wordnet.tsv')
+    babelnet_wordnet, wordnet_babelnet = build_bn2wn_dict(file_path)
+
+    file_path_ = os.path.join(os.getcwd(), 'resources', 'babelnet2lexnames.tsv')
+    babelnet_lex, lex_babelnet = build_bn2lex_dict(file_path_)
