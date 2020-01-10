@@ -8,6 +8,7 @@ import zipfile
 
 import numpy as np
 import tensorflow as tf
+import yaml
 from tensorflow.keras.backend import set_session
 from tensorflow.keras.utils import get_file
 from tqdm import tqdm
@@ -25,18 +26,47 @@ def initialize_logger():
 
 
 def configure_tf():
-    warnings.filterwarnings('ignore')
+    warnings.filterwarnings('ignore', category=FutureWarning)
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+    # Reduce logging output.
+    tf.logging.set_verbosity(tf.logging.INFO)
     config = tf.ConfigProto()
     # dynamically grow the memory used on the GPU
     config.gpu_options.allow_growth = True
+    # Allowing TF to automatically choose an existing and
+    # supported device to run the operations in case the specified one doesn't exist
+    config.allow_soft_placement = True
     # to log device placement (on which device the operation ran)
-    config.log_device_placement = True
+    config.log_device_placement = False
     config.gpu_options.per_process_gpu_memory_fraction = 0.99
     # (nothing gets printed in Jupyter, only if you run it standalone)
     sess = tf.Session(config=config)
     # set this TensorFlow session as the default session for Keras
     set_session(sess)
+
+
+def configure_workspace():
+    """
+    Initialize the logger and makes seed constant,
+    read the configuration file and load its variables,
+    Configure Tensorflow on the GPU or CPU based on config File
+    :return: config_params {dict}
+    """
+    initialize_logger()
+
+    # Load our config file
+    config_file_path = os.path.join(os.getcwd(), "config.yaml")
+    config_file = open(config_file_path)
+    config_params = yaml.load(config_file)
+
+    # run on CPU, change in Config file.
+    if config_params["USE_CPU"]:
+        os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    else:
+        configure_tf()
+
+    return config_params
 
 
 def save_pickle(save_to, save_what):
@@ -167,6 +197,8 @@ def download_unzip_dataset(download_from, download_to, clean_after=True):
 
 
 def build_bn2wn_dict(file_path, save_to=None):
+    if save_to is None:
+        save_to = [None, None]
     if save_to[0] is not None and os.path.exists(save_to[0]) and os.path.getsize(save_to[0]) > 0 and \
             save_to[1] is not None and os.path.exists(save_to[1]) and os.path.getsize(save_to[1]) > 0:
         babelnet_wordnet = load_pickle(save_to[0])
@@ -192,6 +224,8 @@ def build_bn2wn_dict(file_path, save_to=None):
 
 
 def build_bn2lex_dict(file_path, save_to=None):
+    if save_to is None:
+        save_to = [None, None]
     if save_to[0] is not None and os.path.exists(save_to[0]) and os.path.getsize(save_to[0]) > 0 and \
             save_to[1] is not None and os.path.exists(save_to[1]) and os.path.getsize(save_to[1]) > 0:
         babelnet_lex = load_pickle(save_to[0])
@@ -216,7 +250,66 @@ def build_bn2lex_dict(file_path, save_to=None):
     return babelnet_lex, lex_babelnet
 
 
+def build_bn2dom_dict(file_path, save_to=None):
+    if save_to is None:
+        save_to = [None, None]
+    if save_to[0] is not None and os.path.exists(save_to[0]) and os.path.getsize(save_to[0]) > 0 and \
+            save_to[1] is not None and os.path.exists(save_to[1]) and os.path.getsize(save_to[1]) > 0:
+        babelnet_dom = load_pickle(save_to[0])
+        dom_babelnet = load_pickle(save_to[1])
+        logging.info("Dictionary is loaded")
+        return babelnet_dom, dom_babelnet
+
+    babelnet_dom = dict()
+    with open(file_path, mode='r') as file:
+        lines = file.read().splitlines()
+        for line in tqdm(lines, desc='Building bn_dom mapping dict'):
+            split = line.split('\t')
+            bn, dom = split[0], split[1]
+            babelnet_dom[bn] = dom
+
+    dom_babelnet = dict([[v, k] for k, v in babelnet_dom.items()])
+
+    if save_to[0] is not None and save_to[1] is not None:
+        save_pickle(save_to[0], babelnet_dom)
+        save_pickle(save_to[1], dom_babelnet)
+    logging.info("Dictionaries are saved")
+
+    return babelnet_dom, dom_babelnet
+
+
+def split_datasets(semcor_omsti):
+    """
+    Takes the SemCor+Omsti dataset and extract from it Omsti dataset,
+    by reading all the file contents and then finding last </corpus>,
+    and then including everything from the index of '<corpus lang="en" source="mun">'
+    tag and then writing all of the list elements in between to another file
+    in same directory
+
+    :param semcor_omsti: str
+    :return: None
+    """
+    with open(semcor_omsti, "r") as inputFile:
+        file_content = inputFile.read().splitlines()
+        first_line = file_content[0]
+        corpus_endings = list(filter(lambda i: file_content[i] == "</corpus>", range(len(file_content))))
+
+        omsti_corpus_idx = file_content.index('<corpus lang="en" source="mun">')
+        omsti_corpus_end_idx = corpus_endings[1] + 1
+        omsti_corpus = file_content[omsti_corpus_idx:omsti_corpus_end_idx]
+
+    with open(semcor_omsti.replace('semcor+omsti', 'omsti'), 'w+') as omsti_file:
+        omsti_file.write(f'{first_line}\n')
+        for line in tqdm(omsti_corpus, desc='writing omsti file'):
+            omsti_file.write(f'{line}\n')
+    logging.info('DONE WITH OMSTI')
+
+
 if __name__ == '__main__':
+    semcor_omsti = os.path.join(os.getcwd(), 'data', 'training', 'WSD_Training_Corpora',
+                                'SemCor+OMSTI', 'semcor+omsti.data.xml')
+    split_datasets(semcor_omsti)
+
     file_path = os.path.join(os.getcwd(), 'resources', 'babelnet2wordnet.tsv')
     babelnet_wordnet, wordnet_babelnet = build_bn2wn_dict(file_path)
 

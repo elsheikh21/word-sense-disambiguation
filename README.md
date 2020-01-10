@@ -1,29 +1,4 @@
-# English Word Sense Disambiguation
-
-- Using 6 multilingual evaluation datasets, Mapping from lemmas to BabelNet synsets for each other language
-
-## Outline
-
-1. Implement and train a system capable of performing both fine-grained and coarse-grained WSD.
-2. Evaluate the model on both fine- and coarse-grained WSD using MFS
-3. Implement predict functions in the `predict.py` file to make predictions with your trained model for each inventory provided
-4. Write a report where you describe your approach and your result analysis
-   1. Text report max 3 pages (4 for the big projects), text after the 3rd (4th) page will not be considered
-   2. Images and tables max 3 pages
-
-## Fine and Coarse-grained WSD
-
-- WSD: It is a system capable of automatically resolving ambiguity using a sense inventory (WordNet)
-- Fine Grained: contain lots of refined senses for every lemma, therefore they tend to suffer from over-specification and sparsity
-
-  - data comes in the form of sentences where some words are associated with some of their senses
-  - Task: associating a word in context with one of the meanings enumerated in the sense inventory.
-  - Biggest difficulty: dealing with a input-dependent target classes -- this means sparsity.
-
-- Coarse Grained: collect senses into more general categories thereby reducing the sparsity of the data. However, they usually end up with less informative senses for every lemma
-  - Tries to overcome the problems of traditional fine-grained
-    WSD by providing general purpose labels, less strictly tied to lemmas. Hence,less sparsity.
-  - exploit resources created for fine-grained WSD, coarse-grained inventories are generally structured as a mapping from WordNet synsets to coarse-grained labels.
+# Word Sense Disambiguation
 
 ## Data
 
@@ -33,13 +8,6 @@
     - ![Training_and_Prediction_Format](readme_related/regato_et_al.png)
   - `.gold.key.txt`
     - ![Gold_Format](readme_related/gold_regato_et_al.png)
-
-- Other data to be used
-  - OMSTI (Found in file SemCor+Omsti, needs to be splitted)
-  - [Wordnet’s Tagged Glosses](https://github.com/getalp/UFSAC)
-  - [T-O-M](http://www.trainomatic.org/trainomatic)
-  - [EuroSense](http://lcl.uniroma1.it/eurosense/)
-  - [SEW](http://lcl.uniroma1.it/sew/)
 
 ## Approaches
 
@@ -108,6 +76,7 @@
 
 - Same as the previous model, but this one has 2 BiLSTM layers, followed by an Attention layer, and the output of the Attention Layer is passed to the TimeDistributed Dense Layer (just like the previous model)
   ![Attention Stacked BiLSTM Model](readme_related/Attention_Stacked_BiLSTM_Model.png)
+  ![Attention Stacked BiLSTM Model](readme_related/attention_bilstm_model.png)
 
 ### Sequence-to-Sequence Model
 
@@ -127,6 +96,7 @@
 - Because the training process and inference process (decoding sentences) are quite different, we use different models for both, albeit they all leverage the same inner layers.
 
   ![Sequence-to-Sequence Model](readme_related/seq2seq_atten.png)
+  ![Sequence-to-Sequence Attention Model](readme_related/seq2seq_atten_mdl.png)
 
 
 ## To install requirements

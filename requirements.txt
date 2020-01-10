@@ -2,8 +2,8 @@ lxml==4.2.5
 yaml==3.13
 tqdm==4.29.1
 numpy==1.16.2
-tensorflow==1.12
-tensorflow-gpu==1.12
+tensorflow==1.14
+tensorflow-gpu==1.14
 keras==2.2.5
 matplotlib==3.0.2
 json==2.0.9

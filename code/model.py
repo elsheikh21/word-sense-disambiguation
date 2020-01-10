@@ -4,7 +4,11 @@ from argparse import ArgumentParser
 import yaml
 
 os.environ['TF_KERAS'] = '1'
-from keras_self_attention import SeqSelfAttention
+try:
+    from keras_self_attention import SeqSelfAttention
+except ModuleNotFoundError:
+    os.system('pip install keras_self_attention')
+    from keras_self_attention import SeqSelfAttention
 from tensorflow.keras.layers import (LSTM, Add, Bidirectional,
                                      Concatenate, Dense, Embedding, Input,
                                      Softmax, TimeDistributed)
@@ -26,14 +30,13 @@ def parse_args():
                                 attention: Attention Stacked BiLSTM Model.
                                 seq2seq: Seq2Seq Attention.""")
 
-    params = vars(parser.parse_args())
-
-    return params
+    return vars(parser.parse_args())
 
 
 def baseline_model(vocabulary_size, config_params,
                    output_size, tokenizer=None,
                    visualize=False, plot=False):
+    name = 'Baseline'
     hidden_size = int(config_params['hidden_size'])
     batch_size = int(config_params['batch_size'])
 
@@ -44,6 +47,7 @@ def baseline_model(vocabulary_size, config_params,
     if tokenizer is not None:
         embedding = ElmoEmbeddingLayer()(in_sentences)
         embedding_size = 1024
+        name = f'Elmo_{name}'
     else:
         embedding_size = int(config_params['embedding_size'])
         embedding = Embedding(input_dim=vocabulary_size,
@@ -66,10 +70,10 @@ def baseline_model(vocabulary_size, config_params,
     logits_mask = Add()([logits, in_mask])
     output = Softmax()(logits_mask)
 
-    model = Model(inputs=[in_sentences, in_mask], outputs=output, name="Baseline")
+    model = Model(inputs=[in_sentences, in_mask], outputs=output, name=name)
 
     model.compile(loss="sparse_categorical_crossentropy",
-                  optimizer=Adadelta(), metrics=["acc"])
+                  optimizer=Adadelta(), metrics=['acc'])
 
     visualize_plot_mdl(visualize, plot, model)
 
@@ -116,7 +120,7 @@ def attention_model(vocabulary_size, config_params, output_size,
     model = Model(inputs=[in_sentences, in_mask], outputs=output, name="Attention")
 
     model.compile(loss="sparse_categorical_crossentropy",
-                  optimizer=Adadelta(), metrics=["acc"])
+                  optimizer=Adadelta(), metrics=['acc'])
 
     visualize_plot_mdl(visualize, plot, model)
 
@@ -202,7 +206,7 @@ def seq2seq_model(vocabulary_size, config_params, output_size,
     model = Model([encoder_inputs, in_mask], outputs=decoder_outputs, name="Seq2Seq_Attention")
 
     model.compile(loss="sparse_categorical_crossentropy",
-                  optimizer=Adadelta(), metrics=["acc"])
+                  optimizer=Adadelta(), metrics=['acc'])
 
     visualize_plot_mdl(visualize, plot, model)
 
@@ -237,13 +241,13 @@ if __name__ == "__main__":
     if params["model_type"] == "baseline":
         model = baseline_model(vocabulary_size, config_params,
                                output_size, tokenizer=tokenizer)
-        history = train_model(model, dataset, config_params, elmo)
+        history = train_model(model, dataset, config_params, elmo, shuffle=True)
     elif params["model_type"] == "attention":
         attention_model = attention_model(vocabulary_size,
                                           config_params, output_size,
                                           tokenizer=tokenizer)
-        attention_history = train_model(attention_model, dataset, config_params)
+        attention_history = train_model(attention_model, dataset, config_params, elmo, shuffle=True)
     elif params["model_type"] == "seq2seq":
         seq2seq_model = seq2seq_model(vocabulary_size, config_params,
                                       output_size, tokenizer=tokenizer)
-        seq2seq_history = train_model(seq2seq_model, dataset, config_params)
+        seq2seq_history = train_model(seq2seq_model, dataset, config_params, elmo, shuffle=True)

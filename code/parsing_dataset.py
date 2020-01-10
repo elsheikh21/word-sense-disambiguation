@@ -1,8 +1,6 @@
 import logging
 import os
 
-import re
-
 import numpy as np
 import yaml
 from lxml.etree import iterparse
@@ -14,10 +12,11 @@ from tqdm import tqdm
 from utilities import (initialize_logger, load_pickle, save_pickle,
                        dataset_summarize, build_bn2wn_dict,
                        build_bn2lex_dict, build_dict,
-                       download_unzip_dataset)
+                       download_unzip_dataset, build_bn2dom_dict)
 
 
-def parse_dataset(file_name, gold_dict, config_path, wordnet_babelnet, babelnet_lex, save_to_paths=None):
+def parse_dataset(file_name, gold_dict, config_path, wordnet_babelnet,
+                  babelnet_lex, babelnet_domain, save_to_paths=None):
     """
     Starts with reading xml file, only sentence tags, iterates over children
     of sentences' tags.
@@ -34,7 +33,7 @@ def parse_dataset(file_name, gold_dict, config_path, wordnet_babelnet, babelnet_
     :return sentences_labeled: list of strings contains all data labeled
     """
     sentences_list, labeled_sentences_list, masks_builder = [], [], []
-    pos_labeled_list, lex_labeled_list = [], []
+    pos_labeled_list, lex_labeled_list, domain_labeled_list = [], [], []
 
     config_file = open(config_path)
     config_params = yaml.load(config_file)
@@ -64,7 +63,7 @@ def parse_dataset(file_name, gold_dict, config_path, wordnet_babelnet, babelnet_
         for _, elements in tqdm(context, desc="Parsing corpus"):
             sentence, sentence_labeled = [], []
             mask_builder = []
-            sentence_pos_labeled, sentence_lex_labeled = [], []
+            sentence_pos_labeled, sentence_lex_labeled, sentence_domain_labeled = [], [], []
             for elem in list(elements.iter()):
                 if elem is not None:
                     if ((elem.tag == 'wf' or elem.tag == 'instance') and
@@ -75,6 +74,7 @@ def parse_dataset(file_name, gold_dict, config_path, wordnet_babelnet, babelnet_
                         sentence_labeled.append(elem_lemma)
                         sentence_pos_labeled.append(elem_pos)
                         sentence_lex_labeled.append(elem_lemma)
+                        sentence_domain_labeled.append(elem_lemma)
                         if elem.tag == 'wf':
                             mask_builder.append([elem_lemma])
                     if elem.tag == 'instance' and elem.text is not None:
@@ -86,8 +86,11 @@ def parse_dataset(file_name, gold_dict, config_path, wordnet_babelnet, babelnet_
                             sentence_labeled[-1] = f'{synset_id}'
                             if wordnet_babelnet.get(synset_id) is None:
                                 sentence_lex_labeled[-1] = 'factotum'
+                                sentence_domain_labeled[-1] = 'factotum'
                             else:
                                 sentence_lex_labeled[-1] = str(babelnet_lex[wordnet_babelnet[synset_id]])
+                                sentence_domain_labeled[-1] = str(babelnet_domain.get(wordnet_babelnet[synset_id],
+                                                                                      'factotum'))
                         if elem_lemma:
                             mask_builder.append([elem_lemma, synset_id])
             if len(sentence) and len(sentence_labeled) and len(mask_builder)\
@@ -99,6 +102,7 @@ def parse_dataset(file_name, gold_dict, config_path, wordnet_babelnet, babelnet_
                 masks_builder.append(mask_builder)
                 pos_labeled_list.append(sentence_pos_labeled)
                 lex_labeled_list.append(sentence_lex_labeled)
+                domain_labeled_list.append(sentence_domain_labeled)
             elements.clear()
         logging.info("Parsed the dataset")
 
@@ -112,6 +116,7 @@ def parse_dataset(file_name, gold_dict, config_path, wordnet_babelnet, babelnet_
             masks_builder.append(masks_builder[0])
             pos_labeled_list.append(pos_labeled_list[0])
             lex_labeled_list.append(lex_labeled_list[0])
+            domain_labeled_list.append(domain_labeled_list[0])
 
     if save_to_paths is not None:
         save_x_to, save_y_to = save_to_paths[0], save_to_paths[1]
@@ -130,11 +135,13 @@ def parse_dataset(file_name, gold_dict, config_path, wordnet_babelnet, babelnet_
         save_pickle(save_mask_to, masks_builder)
         logging.info("Saved the dataset")
 
-    return sentences_list, labeled_sentences_list, masks_builder, pos_labeled_list, lex_labeled_list
+    return (sentences_list, labeled_sentences_list, masks_builder, pos_labeled_list,
+            lex_labeled_list, domain_labeled_list)
 
 
 def process_dataset(data_x, data_y, pos_labeled_list,
-                    lex_labeled_list, save_tokenizer=None,
+                    lex_labeled_list, dom_labeled_list,
+                    save_tokenizer=None,
                     save_data=None, elmo=False):
     if (save_data[0] is not None
             and os.path.exists(save_data[0])
@@ -159,12 +166,14 @@ def process_dataset(data_x, data_y, pos_labeled_list,
         tokenizer = load_pickle(save_tokenizer)
         pos_tokenizer = load_pickle(save_tokenizer.replace('tokenizer', 'pos_tokenizer'))
         lex_tokenizer = load_pickle(save_tokenizer.replace('tokenizer', 'lex_tokenizer'))
+        dom_tokenizer = load_pickle(save_tokenizer.replace('tokenizer', 'dom_tokenizer'))
         try:
             # If text already converted to sequences then skip this part
             data_x = data_x if elmo else tokenizer.texts_to_sequences(data_x)
             data_y = tokenizer.texts_to_sequences(data_y)
             pos_labeled_list = pos_tokenizer.texts_to_sequences(pos_labeled_list)
             lex_labeled_list = lex_tokenizer.texts_to_sequences(lex_labeled_list)
+            dom_labeled_list = dom_tokenizer.texts_to_sequences(dom_labeled_list)
         except AttributeError:
             pass
         logging.info("Tokenizers are loaded")
@@ -199,16 +208,23 @@ def process_dataset(data_x, data_y, pos_labeled_list,
         lex_tokenizer.word_index.update({'<PAD>': 0})
         lex_tokenizer.index_word = dict((i, w) for w, i in lex_tokenizer.word_index.items())
 
+        dom_tokenizer = Tokenizer(oov_token='factotum')
+        dom_tokenizer.fit_on_texts(dom_labeled_list)
+        dom_tokenizer.word_index.update({'<PAD>': 0})
+        dom_tokenizer.index_word.update({0: '<PAD>'})
+
         if save_tokenizer is not None:
             save_pickle(save_tokenizer, tokenizer)
             save_pickle(save_tokenizer.replace('tokenizer', 'pos_tokenizer'), pos_tokenizer)
             save_pickle(save_tokenizer.replace('tokenizer', 'lex_tokenizer'), lex_tokenizer)
+            save_pickle(save_tokenizer.replace('tokenizer', 'dom_tokenizer'), dom_tokenizer)
             logging.info("Tokenizers are Saved")
 
         data_x = data_x if elmo else tokenizer.texts_to_sequences(data_x)
         data_y = tokenizer.texts_to_sequences(data_y)
         pos_labeled_list = pos_tokenizer.texts_to_sequences(pos_labeled_list)
         lex_labeled_list = lex_tokenizer.texts_to_sequences(lex_labeled_list)
+        dom_labeled_list = dom_tokenizer.texts_to_sequences(dom_labeled_list)
 
         if save_data is not None:
             save_pickle(save_data[0], data_x)
@@ -216,62 +232,123 @@ def process_dataset(data_x, data_y, pos_labeled_list,
             if 'train' in save_data[1]:
                 save_pickle(save_data[1].replace('train_y', 'train_pos_y'), pos_labeled_list)
                 save_pickle(save_data[1].replace('train_y', 'train_lex_y'), lex_labeled_list)
+                save_pickle(save_data[1].replace('train_y', 'train_dom_y'), dom_labeled_list)
             else:
                 save_pickle(save_data[1].replace('test_y', 'test_pos_y'), pos_labeled_list)
                 save_pickle(save_data[1].replace('test_y', 'test_lex_y'), lex_labeled_list)
+                save_pickle(save_data[1].replace('test_y', 'test_dom_y'), dom_labeled_list)
             logging.info("Processed Data is Saved")
 
-    return data_x, data_y, pos_labeled_list, lex_labeled_list
+    return data_x, data_y, pos_labeled_list, lex_labeled_list, dom_labeled_list
 
 
-def load_dataset(summarize=False, elmo=False):
+def load_dataset(summarize=False, elmo=False, use_omsti=False):
+    """
+    Parse & Preprocess dataset, returns dataset dict.
+    More to know:
+    Reads Semcor dataset, and all the mappings required, process
+    the data to have all different labels as per our sentences,
+    prints out summary for frequency of sentences length, can integrate
+    another dataset, and preprocess data for ELMo.
+    If training data and or testing data is not there, downloads it,
+    unzips then retry parsing and pre-processing
+    :param summarize:
+    :param elmo:
+    :param use_omsti:
+    :return: dataset {dict} contains
+        -  train_x, lemmas of word format and instance tags
+        -  train_y, lemma_sense format for every word of instance tag
+        -  pos_labeled_list, lemma_pos format
+        -  lex_labeled_list, lemma_lex format
+        -  dom_labeled_list, lemma_dom
+        -  test_x, same as train
+        -  test_y, same as train
+        -  pos_labeled_list_test, same as train
+        -  lex_labeled_list_test, same as train
+        -  tokenizer, tokenizer and the dictionary of the vocabulary
+        -  vocabulary_size, num of words in our dataset
+        -  output_size, num of senses in our dataset
+        -  mask_builder, mask as per training data
+        -  dev_mask_builder, mask as per testing data
+        -  pos_vocab_size, num of poses in our dataset
+        -  lex_vocab_size, num of lexes in our dataset
+        -  dom_vocab_size num of domains in our dataset
+    }
+
+    """
     cwd = os.getcwd()
     data_path = os.path.join(cwd, 'data')
     resources_path = os.path.join(cwd, 'resources')
     config_path = os.path.join(cwd, 'config.yaml')
     bn2wn_path = os.path.join(resources_path, 'babelnet2wordnet.tsv')
     bn2lex_path = os.path.join(resources_path, 'babelnet2lexnames.tsv')
+    bn2dom_path = os.path.join(resources_path, 'babelnet2wndomains.tsv')
 
     bn2wn_save_path = bn2wn_path.replace('tsv', 'pkl')
     wn2bn_save_path = bn2wn_path.replace('babelnet2wordnet.tsv', 'wordnet2babelnet.pkl')
     _, wordnet_babelnet = build_bn2wn_dict(bn2wn_path, save_to=[bn2wn_save_path, wn2bn_save_path])
 
     bn2lex_save_path = bn2lex_path.replace('tsv', 'pkl')
-    lex2bn_save_path = bn2lex_path.replace('babelnet2lexnames.tsv', 'lexnames2babelnet.pkl')
+    lex2bn_save_path = bn2lex_save_path.replace('babelnet2lexnames.pkl', 'lexnames2babelnet.pkl')
     babelnet_lex, _ = build_bn2lex_dict(bn2lex_path, save_to=[bn2lex_save_path, lex2bn_save_path])
+
+    bn2dom_save_path = bn2dom_path.replace('babelnet2wndomains.tsv', 'babelnet2wndomains.pkl')
+    dom2bn_save_path = bn2dom_save_path.replace('babelnet2wndomains.pkl', 'wndomains2babelnet.pkl')
+    babelnet_domain, _ = build_bn2dom_dict(bn2dom_path, save_to=[bn2dom_save_path, dom2bn_save_path])
 
     try:
         # Building the gold dictionary for training set
         file_path = os.path.join(
             data_path, 'training', 'WSD_Training_Corpora',
-            'SemCor', 'semcor.gold.key.txt')
-        save_to = os.path.join(resources_path, 'gold_dict.pkl')
+            'SemCor+OMSTI', 'semcor+omsti.gold.key.txt')
+        save_to = os.path.join(resources_path, 'gold_omsti_dict.pkl')
         gold_dict = build_dict(file_path, save_to)
 
-        # parsing the dataset & save it
         path = os.path.join(data_path, 'training',
                             'WSD_Training_Corpora',
                             'SemCor', 'semcor.data.xml')
+
         save_data = [os.path.join(resources_path, 'train_x.pkl'),
                      os.path.join(resources_path, 'train_y.pkl'),
                      os.path.join(resources_path, 'train_mask.pkl')]
+
         (data_x, data_y, mask_builder,
-         pos_labeled_list_, lex_labeled_list_) = parse_dataset(
+         pos_labeled_list_, lex_labeled_list_, dom_labeled_list_) = parse_dataset(
             path, gold_dict, config_path, wordnet_babelnet,
-            babelnet_lex, save_to_paths=save_data)
+            babelnet_lex, babelnet_domain, save_to_paths=save_data)
+
+        if use_omsti:
+            omsti_path = os.path.join(data_path, 'training',
+                                      'WSD_Training_Corpora',
+                                      'SemCor+OMSTI', 'omsti.data.xml')
+            save_data = [os.path.join(resources_path, 'train_omsti_x.pkl'),
+                         os.path.join(resources_path, 'train_omsti_y.pkl'),
+                         os.path.join(resources_path, 'train_omsti_mask.pkl')]
+            (data_x_o, data_y_o, mask_builder_o,
+             pos_labeled_list_o_, lex_labeled_list_o_) = parse_dataset(
+                omsti_path, gold_dict, config_path, wordnet_babelnet,
+                babelnet_lex, save_to_paths=save_data)
+            data_x.extend(data_x_o)
+            data_y.extend(data_y_o)
+            mask_builder.extend(mask_builder_o)
+            pos_labeled_list_.extend(pos_labeled_list_o_)
+            lex_labeled_list_.extend(lex_labeled_list_o_)
     except FileNotFoundError:
         download_from = 'http://lcl.uniroma1.it/wsdeval/data/WSD_Training_Corpora.zip'
         download_to = os.path.join(
             os.getcwd(), 'data', 'evaluation', download_from.split('/')[-1])
         download_unzip_dataset(download_from, download_to)
+        (data_x, data_y, mask_builder,
+         pos_labeled_list_, lex_labeled_list_, dom_labeled_list_) = parse_dataset(
+            path, gold_dict, config_path, wordnet_babelnet,
+            babelnet_lex, babelnet_domain, save_to_paths=save_data)
 
     save_tokenizer = os.path.join(resources_path, 'tokenizer.pkl')
-    (train_x, train_y,
-     pos_labeled_list,
-     lex_labeled_list) = process_dataset(data_x, data_y,
-                                         pos_labeled_list_, lex_labeled_list_,
-                                         save_tokenizer=save_tokenizer,
-                                         save_data=save_data, elmo=elmo)
+    (train_x, train_y, pos_labeled_list,
+     lex_labeled_list, dom_labeled_list) = process_dataset(data_x, data_y,
+                                                           pos_labeled_list_, lex_labeled_list_,
+                                                           dom_labeled_list_, save_tokenizer=save_tokenizer,
+                                                           save_data=save_data, elmo=elmo)
 
     try:
         # Building the gold dictionary for dev set
@@ -293,10 +370,12 @@ def load_dataset(summarize=False, elmo=False):
         save_data = [os.path.join(resources_path, 'test_x.pkl'),
                      os.path.join(resources_path, 'test_y.pkl'),
                      os.path.join(resources_path, 'test_mask.pkl')]
-        (data_x, data_y, _,
-         dev_pos_labeled_list, dev_lex_labeled_list) = parse_dataset(eval_path, eval_dict,
-                                                                     config_path, wordnet_babelnet,
-                                                                     babelnet_lex, save_to_paths=save_data)
+        (data_x, data_y, dev_mask_builder,
+         dev_pos_labeled_list, dev_lex_labeled_list,
+         dev_dom_labeled_list) = parse_dataset(eval_path, eval_dict,
+                                               config_path, wordnet_babelnet,
+                                               babelnet_lex, babelnet_domain,
+                                               save_to_paths=save_data)
     except FileNotFoundError:
         download_from = 'http://lcl.uniroma1.it/wsdeval/data/WSD_Evaluation_Framework.zip'
         download_to = os.path.join(
@@ -305,10 +384,11 @@ def load_dataset(summarize=False, elmo=False):
 
     (test_x, test_y,
      pos_labeled_list_test,
-     lex_labeled_list_test) = process_dataset(data_x, data_y,
-                                              dev_pos_labeled_list, dev_lex_labeled_list,
-                                              save_tokenizer=save_tokenizer,
-                                              save_data=save_data, elmo=elmo)
+     lex_labeled_list_test, dom_labeled_list_test) = process_dataset(data_x, data_y,
+                                                                     dev_pos_labeled_list, dev_lex_labeled_list,
+                                                                     dev_dom_labeled_list,
+                                                                     save_tokenizer=save_tokenizer,
+                                                                     save_data=save_data, elmo=elmo)
     tokenizer = load_pickle(save_tokenizer)
     word_tokens = [
         word for word in tokenizer.word_index if not word.startswith('wn:')]
@@ -323,16 +403,22 @@ def load_dataset(summarize=False, elmo=False):
 
     lex_tokenizer = load_pickle(save_tokenizer.replace('tokenizer', 'lex_tokenizer'))
     lex_vocab_size = len(lex_tokenizer.word_index.items())
-    # lex_word_regex = '[a-z]+(?:\\.)[a-z]+$'
-    # lex_names = [word for word in lex_tokenizer.word_index.keys() if re.match(lex_word_regex, word) and len(word) > 3]
-    # lex_names.extend(['<OOV>', '<PAD>', 'factotum'])
-    # lex_vocab_size = len(lex_names)
+
+    dom_tokenizer = load_pickle(save_tokenizer.replace('tokenizer', 'dom_tokenizer'))
+    dom_vocab_size = len(dom_tokenizer.word_index.items())
+    '''
+    lex_word_regex = '[a-z]+(?:\\.)[a-z]+$'
+    lex_names = [word for word in lex_tokenizer.word_index.keys() if re.match(lex_word_regex, word) and len(word) > 3]
+    lex_names.extend(['<OOV>', '<PAD>', 'factotum'])
+    lex_vocab_size = len(lex_names)
+    '''
 
     dataset = {
         'train_x': train_x,
         'train_y': train_y,
         'pos_labeled_list': pos_labeled_list,
         'lex_labeled_list': lex_labeled_list,
+        'dom_labeled_list': dom_labeled_list,
         'test_x': test_x,
         'test_y': test_y,
         'pos_labeled_list_test': pos_labeled_list_test,
@@ -341,8 +427,10 @@ def load_dataset(summarize=False, elmo=False):
         'vocabulary_size': vocabulary_size,
         'output_size': output_size,
         'mask_builder': mask_builder,
+        'dev_mask_builder': dev_mask_builder,
         'pos_vocab_size': pos_vocab_size,
-        'lex_vocab_size': lex_vocab_size
+        'lex_vocab_size': lex_vocab_size,
+        'dom_vocab_size': dom_vocab_size
     }
 
     if summarize:
@@ -351,14 +439,17 @@ def load_dataset(summarize=False, elmo=False):
     return dataset
 
 
-def create_mask(mask_builder, mask_shape, tokenizer, output_size):
+def create_mask(mask_builder, mask_shape, tokenizer, output_size, use_bert=False):
     mask_x = np.full(shape=(mask_shape[0],
                             mask_shape[1],
                             output_size),
                      fill_value=-np.inf)
 
-    # Get the word2idx dictionary from tokenizer class
-    word2idx = tokenizer.word_index
+    if use_bert:
+        word2idx = tokenizer.vocab
+    else:
+        word2idx = tokenizer.word_index
+
     # for every sentence in the mask builder
     for sentence in range(len(mask_builder)):
         # for every word in every sentence
@@ -377,13 +468,18 @@ def create_mask(mask_builder, mask_shape, tokenizer, output_size):
 
     return mask_x
 
-# TODO: COUPLE OF FIXES
+
 def val_generator(data_x, data_y, batch_size, output_size,
-                  use_elmo):
+                  use_elmo, mask_builder, tokenizer, use_bert):
     start = 0
     while True:
         end = start + batch_size
+        data_x = np.array(data_x)
+        data_y = np.array(data_y)
+        mask_builder = np.array(mask_builder)
+
         data_x_, data_y_ = data_x[start:end], data_y[start:end]
+        mask_builder_ = mask_builder[start:end]
         max_len = len(max(data_x_, key=len))
 
         pad_val = '<PAD>' if use_elmo else 0
@@ -394,12 +490,14 @@ def val_generator(data_x, data_y, batch_size, output_size,
                                 value=0, maxlen=max_len, dtype=object)
         _data_y = np.expand_dims(data_y_, axis=-1)
 
+        mask_x = create_mask(mask_builder_,
+                             [_data_y.shape[0], _data_y.shape[1]],
+                             tokenizer, output_size, use_bert=use_bert)
 
         _data_x = data_x_ if not use_elmo else np.array([' '.join(x) for x in data_x_],
                                                         dtype=object)
 
-
-        yield _data_x, _data_y
+        yield [_data_x, mask_x], _data_y
 
         if start + batch_size > len(data_x):
             start = 0
@@ -408,7 +506,8 @@ def val_generator(data_x, data_y, batch_size, output_size,
 
 
 def train_generator(data_x, data_y, batch_size, output_size,
-                    use_elmo, mask_builder, tokenizer, shuffle=False):
+                    use_elmo, mask_builder, tokenizer,
+                    use_bert=False, shuffle=False):
     start = 0
     while True:
         end = start + batch_size
@@ -436,7 +535,7 @@ def train_generator(data_x, data_y, batch_size, output_size,
 
         mask_x = create_mask(mask_builder_,
                              [_data_y.shape[0], _data_y.shape[1]],
-                             tokenizer, output_size)
+                             tokenizer, output_size, use_bert=use_bert)
 
         if use_elmo:
             _data_x = np.array([' '.join(x) for x in data_x_], dtype=object)
@@ -458,7 +557,8 @@ def train_generator(data_x, data_y, batch_size, output_size,
 
 def multitask_train_generator(data_x, data_y, pos_y, lex_y,
                               batch_size, output_size, use_elmo,
-                              mask_builder, tokenizer, shuffle=False):
+                              mask_builder, tokenizer, use_bert,
+                              shuffle=False):
     start = 0
     while True:
         end = start + batch_size
@@ -494,17 +594,132 @@ def multitask_train_generator(data_x, data_y, pos_y, lex_y,
 
         mask_x = create_mask(mask_builder_,
                              [_data_y.shape[0], _data_y.shape[1]],
-                             tokenizer, output_size)
+                             tokenizer, output_size, use_bert=use_bert)
 
         if use_elmo:
             _data_x = np.array([' '.join(x) for x in data_x_], dtype=object)
             _data_x = np.expand_dims(_data_x, axis=-1)
         else:
-            _data_x = data_x_
+            _data_x = np.array(data_x_)
 
         mask_x = pad_sequences(np.array(mask_x), padding='post', value=0, maxlen=max_len)
 
         yield [_data_x, mask_x], [_data_y, _pos_y, _lex_y]
+
+        if start + batch_size >= len(data_x):
+            start = 0
+            if shuffle:
+                permutation = np.random.permutation(len(data_x))
+        else:
+            start += batch_size
+
+
+def bert_multitask_train_generator(data_x, data_y, lex_y, pos_y, batch_size,
+                                   output_size, use_elmo, mask_builder, tokenizer, shuffle=False):
+    start = 0
+    input_ids, input_masks, segment_ids = data_x
+    while True:
+        end = start + batch_size
+        input_ids = np.array(input_ids)
+        input_masks, segment_ids = np.array(input_masks), np.array(segment_ids)
+        data_y = np.array(data_y)
+        pos_y_, lex_y_ = np.array(pos_y), np.array(lex_y)
+        mask_builder = np.array(mask_builder)
+        if shuffle:
+            permutation = np.random.permutation(len(input_ids))
+            data_x_, data_y_ = input_ids[permutation[start:end]], data_y[permutation[start:end]]
+            input_masks_, segment_ids_ = input_masks[permutation[start:end]], segment_ids[permutation[start:end]]
+            mask_builder_ = mask_builder[permutation[start:end]]
+            pos_y, lex_y = pos_y[permutation[start:end]], lex_y[permutation[start:end]]
+        else:
+            data_x_, data_y_ = input_ids[start:end], data_y[start:end]
+            input_masks_, segment_ids_ = input_masks[start:end], segment_ids[start:end]
+            mask_builder_ = mask_builder[start:end]
+            pos_y_, lex_y_ = pos_y_[start:end], lex_y_[start:end]
+
+        max_len = len(max(data_x_, key=len))
+
+        pad_val = '<PAD>' if use_elmo else 0
+        data_x_ = pad_sequences(data_x_, padding='post', value=pad_val, maxlen=max_len, dtype=object)
+
+        data_y_ = pad_sequences(data_y_, padding='post', value=0, maxlen=max_len, dtype=object)
+        _data_y = np.expand_dims(data_y_, axis=-1)
+
+        pos_y_ = pad_sequences(pos_y_, padding='post', value=0, maxlen=max_len, dtype=object)
+        _pos_y = np.expand_dims(pos_y_, axis=-1)
+
+        lex_y_ = pad_sequences(lex_y_, padding='post', value=0, maxlen=max_len, dtype=object)
+        _lex_y = np.expand_dims(lex_y_, axis=-1)
+
+        mask_x = create_mask(mask_builder_, [_data_y.shape[0], _data_y.shape[1]],
+                             tokenizer, output_size, use_bert=True)
+
+        if use_elmo:
+            _data_x = np.array([' '.join(str(x)) for x in data_x_], dtype=object)
+            _data_x = np.expand_dims(_data_x, axis=-1)
+        else:
+            _data_x = data_x_
+
+        mask_x = pad_sequences(np.array(mask_x), padding='post', value=0, maxlen=max_len)
+        input_masks_ = pad_sequences(np.array(input_masks_), padding='post', value=0, maxlen=max_len)
+        segment_ids_ = pad_sequences(np.array(segment_ids_), padding='post', value=0, maxlen=max_len)
+
+        yield [_data_x, input_masks_, segment_ids_, mask_x], [_data_y, _pos_y, _lex_y]
+
+        if start + batch_size >= len(data_x):
+            start = 0
+            if shuffle:
+                permutation = np.random.permutation(len(data_x))
+        else:
+            start += batch_size
+
+
+def bert_train_generator(data_x, data_y, batch_size, output_size,
+                         use_elmo, mask_builder, tokenizer, shuffle=False):
+    start = 0
+    input_ids, input_masks, segment_ids = data_x
+    while True:
+        end = start + batch_size
+        input_ids = np.array(input_ids)
+        input_masks, segment_ids = np.array(input_masks), np.array(segment_ids)
+        data_y = np.array(data_y)
+        mask_builder = np.array(mask_builder)
+        if shuffle:
+            permutation = np.random.permutation(len(input_ids))
+            data_x_, data_y_ = input_ids[permutation[start:end]], data_y[permutation[start:end]]
+            input_masks_, segment_ids_ = input_masks[permutation[start:end]], segment_ids[permutation[start:end]]
+            mask_builder_ = mask_builder[permutation[start:end]]
+
+        else:
+            data_x_, data_y_ = input_ids[start:end], data_y[start:end]
+            input_masks_, segment_ids_ = input_masks[start:end], segment_ids[start:end]
+            mask_builder_ = mask_builder[start:end]
+
+        max_len = len(max(data_x_, key=len))
+
+        pad_val = '<PAD>' if use_elmo else 0
+        data_x_ = pad_sequences(data_x_, padding='post',
+                                value=pad_val, maxlen=max_len, dtype=object)
+
+        data_y_ = pad_sequences(data_y_, padding='post',
+                                value=0, maxlen=max_len, dtype=object)
+        _data_y = np.expand_dims(data_y_, axis=-1)
+
+        mask_x = create_mask(mask_builder_,
+                             [_data_y.shape[0], _data_y.shape[1]],
+                             tokenizer, output_size, use_bert=True)
+
+        if use_elmo:
+            _data_x = np.array([' '.join(str(x)) for x in data_x_], dtype=object)
+            _data_x = np.expand_dims(_data_x, axis=-1)
+        else:
+            _data_x = data_x_
+
+        mask_x = pad_sequences(np.array(mask_x), padding='post', value=0, maxlen=max_len)
+        input_masks_ = pad_sequences(np.array(input_masks_), padding='post', value=0, maxlen=max_len)
+        segment_ids_ = pad_sequences(np.array(segment_ids_), padding='post', value=0, maxlen=max_len)
+
+        yield [_data_x, input_masks_, segment_ids_, mask_x], _data_y
 
         if start + batch_size >= len(data_x):
             start = 0
@@ -524,4 +739,4 @@ def get_candidate_senses(word, word2idx):
 
 if __name__ == "__main__":
     initialize_logger()
-    dataset = load_dataset(summarize=True, elmo=False)
+    dataset = load_dataset(summarize=True, elmo=True)

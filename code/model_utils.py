@@ -58,11 +58,12 @@ def plot_history(history, save_to=None):
 
 
 def visualize_plot_mdl(visualize, plot, model):
+    name = model._name if model._name is not None else 'Balabizo'  # Balabizo acts as placeholder
     if visualize:
-        print(f'\n{model._name} Model Summary: \n')
+        print(f'\n{name} Model Summary: \n')
         model.summary()
     if plot:
-        img_path = os.path.join(os.getcwd(), 'resources', f'{model._name}_Model.png')
+        img_path = os.path.join(os.getcwd(), 'resources', f'{name}_Model.png')
         plot_model(model, to_file=img_path, show_shapes=True)
-        logging.info(f"{model._name} model image saved")
-    logging.info(f"{model._name} model is created & compiled")
+        logging.info(f"{name} model image saved")
+    logging.info(f"{name} model is created & compiled")

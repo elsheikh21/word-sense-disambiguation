@@ -10,7 +10,7 @@ from parsing_dataset import train_generator
 from utilities import save_pickle
 
 
-def train_model(model, dataset, config_params, use_elmo):
+def train_model(model, dataset, config_params, use_elmo, shuffle=False):
     name = model._name
     train_x, train_y = dataset.get('train_x'), dataset.get('train_y')
     output_size = dataset.get('output_size')
@@ -39,20 +39,18 @@ def train_model(model, dataset, config_params, use_elmo):
         history = model.fit_generator(train_generator(train_x, train_y,
                                                       batch_size, output_size,
                                                       use_elmo, mask_builder,
-                                                      tokenizer, shuffle=True),
+                                                      tokenizer, shuffle=shuffle),
                                       verbose=1, epochs=epochs,
                                       steps_per_epoch=np.ceil(len(train_x) / batch_size),
                                       callbacks=cbks)
-        history_path = os.path.join(
-            resources_path, f'{name}_history.pkl')
+        history_path = os.path.join(resources_path, f'{name}_history.pkl')
         save_pickle(history_path, history.history)
-        plot_history(history, os.path.join(
-            resources_path, f'{name}_history'))
-        model.save_weights(os.path.join(
-            resources_path, f'{name}_weights.h5'))
+        plot_history(history, os.path.join(resources_path, f'{name}_history'))
+        model.save(os.path.join(resources_path, f'{name}_model.h5'))
+        model.save_weights(os.path.join(resources_path, f'{name}_weights.h5'))
         return history
     except KeyboardInterrupt:
         model.save(os.path.join(
-            resources_path, f'{name}.h5'))
+            resources_path, f'{name}_model.h5'))
         model.save_weights(os.path.join(
             resources_path, f'{name}_weights.h5'))

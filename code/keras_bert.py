@@ -1,22 +1,23 @@
 import tensorflow as tf
 import tensorflow_hub as hub
 from tensorflow.keras import backend as K
-from tensorflow.keras.layers import Layer
-from tensorflow.keras.backend import set_session
 
 
-class BertEmbeddingLayer(Layer):
-    '''
+class BertEmbeddingLayer(tf.keras.layers.Layer):
+    """
     Integrate BERT Embeddings from tensorflow hub into a
     custom Keras layer.
     references:
         1. https://github.com/strongio/keras-bert
         2. https://tfhub.dev/google/bert_uncased_L-12_H-768_A-12/1
-    '''
-
-    def __init__(self, n_fine_tune_layers=10, pooling="mean",
-                 bert_path="https://tfhub.dev/google/bert_uncased_L-12_H-768_A-12/1",
-                 **kwargs,):
+    """
+    def __init__(
+            self,
+            n_fine_tune_layers=10,
+            pooling="first",
+            bert_path="https://tfhub.dev/google/bert_uncased_L-12_H-768_A-12/1",
+            **kwargs,
+    ):
         self.n_fine_tune_layers = n_fine_tune_layers
         self.trainable = True
         self.output_size = 768
@@ -24,28 +25,33 @@ class BertEmbeddingLayer(Layer):
         self.bert_path = bert_path
         if self.pooling not in ["first", "mean"]:
             raise NameError(
-                f"Undefined pooling type (must be either first or mean, but is {self.pooling}")
+                f"Undefined pooling type (must be either first or mean, but is {self.pooling}"
+            )
 
         super(BertEmbeddingLayer, self).__init__(**kwargs)
 
     def build(self, input_shape):
         self.bert = hub.Module(
-            self.bert_path, trainable=self.trainable, name=f"{self.name}_module")
+            self.bert_path, trainable=self.trainable, name=f"{self.name}_module"
+        )
 
         # Remove unused layers
         trainable_vars = self.bert.variables
         if self.pooling == "first":
-            trainable_vars = [
-                var for var in trainable_vars if not "/cls/" in var.name]
+            trainable_vars = [var for var in trainable_vars if not "/cls/" in var.name]
             trainable_layers = ["pooler/dense"]
 
         elif self.pooling == "mean":
             trainable_vars = [
-                var for var in trainable_vars if not "/cls/" in var.name and not "/pooler/" in var.name]
+                var
+                for var in trainable_vars
+                if not "/cls/" in var.name and not "/pooler/" in var.name
+            ]
             trainable_layers = []
         else:
             raise NameError(
-                f"Undefined pooling type (must be either first or mean, but is {self.pooling}")
+                f"Undefined pooling type (must be either first or mean, but is {self.pooling}"
+            )
 
         # Select how many layers to fine tune
         for i in range(self.n_fine_tune_layers):
@@ -75,25 +81,22 @@ class BertEmbeddingLayer(Layer):
             input_ids=input_ids, input_mask=input_mask, segment_ids=segment_ids
         )
         if self.pooling == "first":
-            pooled = self.bert(inputs=bert_inputs, signature="tokens", as_dict=True)[
-                "pooled_output"
-            ]
+            pooled = self.bert(inputs=bert_inputs,
+                               signature="tokens",
+                               as_dict=True)["pooled_output"]
         elif self.pooling == "mean":
             result = self.bert(inputs=bert_inputs, signature="tokens", as_dict=True)[
-                "sequence_output"
-            ]
-
-            def mul_mask(x, m): return x * tf.expand_dims(m, axis=-1)
-
-            def masked_reduce_mean(x, m): return tf.reduce_sum(mul_mask(x, m), axis=1) / (
+                "sequence_output"]
+            mul_mask = lambda x, m: x * tf.expand_dims(m, axis=-1)
+            masked_reduce_mean = lambda x, m: tf.reduce_sum(mul_mask(x, m), axis=1) / (
                 tf.reduce_sum(m, axis=1, keepdims=True) + 1e-10)
             input_mask = tf.cast(input_mask, tf.float32)
             pooled = masked_reduce_mean(result, input_mask)
+            pooled = result
         else:
-            raise NameError(
-                f"Undefined pooling type (must be either first or mean, but is {self.pooling}")
+            raise NameError(f"Undefined pooling type (must be either first or mean, but is {self.pooling}")
 
         return pooled
 
     def compute_output_shape(self, input_shape):
-        return (input_shape[0], input_shape[1], self.output_size)
+        return input_shape[0], input_shape[1], self.output_size

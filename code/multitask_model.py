@@ -16,6 +16,7 @@ from model_utils import visualize_plot_mdl
 from parsing_dataset import load_dataset
 from train_multitask import train_multitask_model
 from utilities import configure_tf, initialize_logger
+from predict_utils import f1_m
 
 
 def parse_args():
@@ -79,7 +80,7 @@ def baseline_model(vocabulary_size, config_params,
                   name='BiLSTM_MultiTask')
 
     model.compile(loss="sparse_categorical_crossentropy",
-                  optimizer=Adadelta(), metrics=["acc"])
+                  optimizer=Adadelta(), metrics=['acc'])
 
     visualize_plot_mdl(visualize, plot, model)
 
@@ -134,6 +135,9 @@ def attention_model(vocabulary_size, config_params, output_size,
     model = Model(inputs=[in_sentences, logits_mask],
                   outputs=[wsd_output, pos_output, lex_output],
                   name='BiLSTM_ATT_MultiTask')
+
+    model.compile(loss="sparse_categorical_crossentropy",
+                  optimizer=Adadelta(), metrics=['acc'])
 
     visualize_plot_mdl(visualize, plot, model)
 
@@ -207,7 +211,7 @@ def seq2seq_model(vocabulary_size, config_params, output_size,
                   name='Seq2Seq_MultiTask')
 
     model.compile(loss="sparse_categorical_crossentropy",
-                  optimizer=Adadelta(), metrics=["acc"])
+                  optimizer=Adadelta(), metrics=['acc'])
 
     visualize_plot_mdl(visualize, plot, model)
 
