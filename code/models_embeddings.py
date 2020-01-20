@@ -9,8 +9,15 @@ from tensorflow.keras.layers import (LSTM, Add, Bidirectional,
                                      Softmax, TimeDistributed,
                                      Concatenate)
 from tensorflow.keras.models import Model
-from tensorflow.keras.optimizers import Adadelta
+from tensorflow.keras.optimizers import Adadelta, Adam
 from tqdm import tqdm
+
+from keras_attention import Attention
+from keras_elmo import ElmoEmbeddingLayer
+from model_utils import visualize_plot_mdl
+from parsing_dataset import load_multilingual
+from train_multitask import train_multitask_model
+from utilities import configure_tf, initialize_logger
 
 os.environ['TF_KERAS'] = '1'
 try:
@@ -18,17 +25,11 @@ try:
 except ModuleNotFoundError:
     os.system('pip install keras_self_attention')
     from keras_self_attention import SeqSelfAttention
-from keras_attention import Attention
-from keras_elmo import ElmoEmbeddingLayer
-from model_utils import visualize_plot_mdl
-from parsing_dataset import load_dataset
-from train_multitask import train_multitask_model
-from utilities import configure_tf, initialize_logger
 
 
 def parse_args():
     parser = ArgumentParser(description="WSD")
-    parser.add_argument("--model_type", default='baseline', type=str,
+    parser.add_argument("--model_type", default='attention', type=str,
                         help="""Choose the model: baseline: BiLSTM Model.
                                 attention: Attention Stacked BiLSTM Model.
                                 seq2seq: Seq2Seq Attention.""")
@@ -39,7 +40,8 @@ def parse_args():
 def pretrained_embeddings(vocab_dict, embedding_size, embbeddings_file):
     # first, build index mapping words in the embeddings set, to their embedding vector
     # Gets pretrained embeddings file path
-    pretrained_embeddings_path = os.path.join(os.getcwd(), 'resources', embbeddings_file)
+    pretrained_embeddings_path = os.path.join(
+        os.getcwd(), 'resources', embbeddings_file)
     # Creates a dict
     embeddings_index = dict()
     # Opens the utf-8 encoded file, loops on every line
@@ -70,7 +72,44 @@ def pretrained_embeddings(vocab_dict, embedding_size, embbeddings_file):
     return embedding_matrix
 
 
-def baseline_model(vocabulary_size, config_params, output_size, weights=None, tokenizer=None, visualize=False, plot=False):
+def multilingual_pretrained_embeddings(vocab_dict, embedding_size, embbeddings_file):
+    # first, build index mapping words in the embeddings set, to their embedding vector
+    # Gets pretrained embeddings file path
+    pretrained_embeddings_path = os.path.join(
+        os.getcwd(), 'resources', embbeddings_file)
+    # Creates a dict
+    embeddings_index = dict()
+    # Opens the utf-8 encoded file, loops on every line
+    # and assign the value as per char
+    with open(pretrained_embeddings_path, encoding='utf-8', mode='r') as file:
+        content = file.read().splitlines()[1:]
+        for line in tqdm(content, desc='Loading embeddings dict'):
+            values = line.split()
+            word = values[0]
+            word_lemma_name = word.split("%")[0]
+            coeffs = np.asarray(values[1:], dtype='float64')
+            embeddings_index[word_lemma_name] = coeffs
+
+    # For our vocabulary size
+    vocab_size = len(vocab_dict)
+
+    embedding_matrix = np.zeros((vocab_size, embedding_size))
+    for word, index in tqdm(vocab_dict.items(), desc='Creating embeddings matrix'):
+        if index > vocab_size - 1:
+            break
+        else:
+            embedding_vector = embeddings_index.get(word)
+            # words not found in embedding index will be all-zeros
+            if embedding_vector is not None:
+                embedding_matrix[index] = embedding_vector
+
+    logging.info('Pretrained Embeddings are created.')
+    return embedding_matrix  # Returns embeddings matrix
+
+
+def baseline_model(vocabulary_size, config_params, output_size,
+                   weights=None, tokenizer=None,
+                   visualize=False, plot=False):
     hidden_size = int(config_params['hidden_size'])
     batch_size = int(config_params['batch_size'])
 
@@ -109,7 +148,8 @@ def baseline_model(vocabulary_size, config_params, output_size, weights=None, to
     logits_mask = Add()([logits, in_mask])
     output = Softmax()(logits_mask)
 
-    model = Model(inputs=[in_sentences, in_mask], outputs=output, name="SensEmbed_Baseline")
+    model = Model(inputs=[in_sentences, in_mask],
+                  outputs=output, name="SensEmbed_Baseline")
 
     model.compile(loss="sparse_categorical_crossentropy",
                   optimizer=Adadelta(), metrics=['acc'])
@@ -119,7 +159,11 @@ def baseline_model(vocabulary_size, config_params, output_size, weights=None, to
     return model
 
 
-def multitask_baseline_model(vocabulary_size, config_params, output_size, pos_vocab_size, lex_vocab_size, weights=None, tokenizer=None, visualize=False, plot=False):
+def multitask_baseline_model(vocabulary_size, config_params,
+                             output_size, pos_vocab_size,
+                             lex_vocab_size, weights=None,
+                             tokenizer=None, visualize=False,
+                             plot=False):
     hidden_size = int(config_params['hidden_size'])
     batch_size = int(config_params['batch_size'])
 
@@ -132,7 +176,7 @@ def multitask_baseline_model(vocabulary_size, config_params, output_size, pos_vo
         embedding_size = 1024
     elif weights is not None:
         embedding_size = weights.shape[1]
-        train = True  # To fine-tune pretrained embeddings or not
+        train = False  # To fine-tune pretrained embeddings or not
         embedding = Embedding(input_dim=output_size, output_dim=embedding_size,
                               weights=[weights], trainable=train,
                               mask_zero=True)(in_sentences)
@@ -178,7 +222,9 @@ def multitask_baseline_model(vocabulary_size, config_params, output_size, pos_vo
     return model
 
 
-def attention_model(vocabulary_size, config_params, output_size, weights=None, tokenizer=None, visualize=False, plot=False):
+def attention_model(vocabulary_size, config_params,
+                    output_size, weights=None,
+                    tokenizer=None, visualize=False, plot=False):
     hidden_size = config_params['hidden_size']
     batch_size = int(config_params['batch_size'])
 
@@ -193,7 +239,7 @@ def attention_model(vocabulary_size, config_params, output_size, weights=None, t
         embedding_size = 1024
     elif weights is not None:
         embedding_size = weights.shape[1]
-        train = True  # To fine-tune pretrained embeddings or not
+        train = False  # To fine-tune pretrained embeddings or not
         embedding = Embedding(input_dim=output_size, output_dim=embedding_size,
                               weights=[weights], trainable=train,
                               mask_zero=True)(in_sentences)
@@ -219,7 +265,8 @@ def attention_model(vocabulary_size, config_params, output_size, weights=None, t
 
     output = Softmax()(logits_mask)
 
-    model = Model(inputs=[in_sentences, in_mask], outputs=output, name="SensEmbed_Attention")
+    model = Model(inputs=[in_sentences, in_mask],
+                  outputs=output, name="SensEmbed_Attention")
 
     model.compile(loss="sparse_categorical_crossentropy",
                   optimizer=Adadelta(), metrics=['acc'])
@@ -229,8 +276,12 @@ def attention_model(vocabulary_size, config_params, output_size, weights=None, t
     return model
 
 
-def multitask_attention_model(vocabulary_size, config_params, output_size, pos_vocab_size, lex_vocab_size,  weights=None, tokenizer=None, visualize=False, plot=False):
-    hidden_size = config_params['hidden_size']
+def multitask_attention_model(vocabulary_size, config_params,
+                              output_size, pos_vocab_size,
+                              lex_vocab_size, weights=None,
+                              tokenizer=None, visualize=False,
+                              plot=False):
+    hidden_size = int(config_params['hidden_size'])
     batch_size = int(config_params['batch_size'])
 
     input_type = 'string' if tokenizer is not None else None
@@ -244,7 +295,7 @@ def multitask_attention_model(vocabulary_size, config_params, output_size, pos_v
         embedding_size = 1024
     elif weights is not None:
         embedding_size = weights.shape[1]
-        train = True  # To fine-tune pretrained embeddings or not
+        train = False  # To fine-tune pretrained embeddings or not
         embedding = Embedding(input_dim=output_size, output_dim=embedding_size,
                               weights=[weights], trainable=train,
                               mask_zero=True)(in_sentences)
@@ -258,8 +309,7 @@ def multitask_attention_model(vocabulary_size, config_params, output_size, pos_v
     bilstm = Bidirectional(LSTM(hidden_size, dropout=0.2,
                                 recurrent_dropout=0.2,
                                 return_sequences=True,
-                                input_shape=(None, None, embedding_size)
-                                ),
+                                input_shape=(None, None, embedding_size)),
                            merge_mode='sum')(embedding)
 
     attention = SeqSelfAttention(attention_activation='sigmoid',
@@ -282,14 +332,15 @@ def multitask_attention_model(vocabulary_size, config_params, output_size, pos_v
                   name='SensEmbed_BiLSTM_ATT_MultiTask')
 
     model.compile(loss="sparse_categorical_crossentropy",
-                  optimizer=Adadelta(), metrics=['acc'])
+                  optimizer=Adam(amsgrad=True), metrics=['acc'])
 
     visualize_plot_mdl(visualize, plot, model)
 
     return model
 
 
-def seq2seq_model(vocabulary_size, config_params, output_size, weights=None, tokenizer=None, visualize=False, plot=False):
+def seq2seq_model(vocabulary_size, config_params, output_size, weights=None,
+                  tokenizer=None, visualize=False, plot=False):
     drop, rdrop = 0.2, 0.2
     hidden_size = int(config_params['hidden_size'])
     batch_size = int(config_params['batch_size'])
@@ -306,7 +357,8 @@ def seq2seq_model(vocabulary_size, config_params, output_size, weights=None, tok
     elif weights is not None:
         embedding_size = weights.shape[1]
         train = True  # To fine-tune pretrained embeddings or not
-        encoder_embeddings = Embedding(input_dim=output_size, output_dim=embedding_size,weights=[weights], trainable=train, mask_zero=True)(encoder_inputs)
+        encoder_embeddings = Embedding(input_dim=output_size, output_dim=embedding_size, weights=[
+                                       weights], trainable=train, mask_zero=True)(encoder_inputs)
     else:
         embedding_size = int(config_params['embedding_size'])
         encoder_embeddings = Embedding(
@@ -368,7 +420,8 @@ def seq2seq_model(vocabulary_size, config_params, output_size, weights=None, tok
 
     decoder_outputs = Softmax()(logits_mask)
 
-    model = Model([encoder_inputs, in_mask], outputs=decoder_outputs, name="SensEmbed_Seq2Seq_Attention")
+    model = Model([encoder_inputs, in_mask],
+                  outputs=decoder_outputs, name="SensEmbed_Seq2Seq_Attention")
 
     model.compile(loss="sparse_categorical_crossentropy",
                   optimizer=Adadelta(), metrics=['acc'])
@@ -478,7 +531,9 @@ if __name__ == "__main__":
 
     load_embeddings = config_params["load_embeddings"]
     elmo = config_params["use_elmo"] if not load_embeddings else False
-    dataset = load_dataset(elmo=elmo)
+
+    # dataset = load_dataset(elmo=elmo)
+    dataset = load_multilingual()
     vocabulary_size = dataset.get("vocabulary_size")
     output_size = dataset.get("output_size")
     tokenizer = dataset.get("tokenizer")
@@ -486,25 +541,29 @@ if __name__ == "__main__":
     lex_vocab_size = dataset.get("lex_vocab_size")
 
     model = None
+    multilingual_embeddings = multilingual_pretrained_embeddings(tokenizer.word_index,
+                                                                 embedding_size=2048,
+                                                                 embbeddings_file="sensembert_supervised.txt")
+
     tokenizer = tokenizer if elmo else None
-    pretrained_embeddings = pretrained_embeddings(tokenizer.word_index,
-                                                  embedding_size=200, embbeddings_file='glove.twitter.27B.200d.txt')
-    """
-    To Choose either Sense Embeddings or Glove Embeddings:
-
-    embedding_size=400, embbeddings_file='sense_embeddings.vec'
-    embedding_size=200, embbeddings_file='glove.twitter.27B.200d.txt'
-    """
-
-    model = multitask_seq2seq_model(vocabulary_size, config_params,
-                                    output_size, pos_vocab_size, lex_vocab_size,
-                                    weights=pretrained_embeddings, tokenizer=tokenizer)
-
+    model = multitask_attention_model(vocabulary_size, config_params, output_size,
+                                      pos_vocab_size, lex_vocab_size,
+                                      weights=multilingual_embeddings,
+                                      tokenizer=tokenizer,
+                                      visualize=True)
     history = train_multitask_model(model, dataset, config_params, use_elmo=elmo)
 
     """
+    pretrained_embeddings = pretrained_embeddings(tokenizer.word_index,
+                                                  embedding_size=200,
+                                                  embbeddings_file='glove.twitter.27B.200d.txt')
+
     model = baseline_model(vocabulary_size, config_params, output_size,
                            weights=pretrained_embeddings, tokenizer=None,
                            visualize=True, plot=True)
     history = train_model(model, dataset, config_params, elmo, shuffle=True)
+
+    # To Choose either Sense Embeddings or Glove Embeddings:
+    # embedding_size=400, embbeddings_file='sense_embeddings.vec'
+    # embedding_size=200, embbeddings_file='glove.twitter.27B.200d.txt'
     """

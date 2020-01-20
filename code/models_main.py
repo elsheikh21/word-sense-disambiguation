@@ -116,7 +116,6 @@ def build_train_multitask_model(parser_params, config_params, dataset):
     elmo = config_params["use_elmo"]
 
     model_type = parser_params["model_type"]
-
     if model_type == "baseline":
         model = mt.baseline_model(vocabulary_size, config_params,
                                   pos_vocab_size, lex_vocab_size,
@@ -124,8 +123,8 @@ def build_train_multitask_model(parser_params, config_params, dataset):
         _ = train_multitask_model(model, dataset, config_params, elmo)
     elif model_type == "attention":
         attention_model = mt.attention_model(vocabulary_size, config_params,
-                                             pos_vocab_size, lex_vocab_size,
-                                             output_size, tokenizer=tokenizer)
+                                             output_size, pos_vocab_size,
+                                             lex_vocab_size, tokenizer=tokenizer)
         _ = train_multitask_model(
             attention_model, dataset, config_params, elmo)
     elif model_type == "seq2seq":

@@ -93,7 +93,8 @@ def multitask_baseline_model(output_size, pos_vocab_size, lex_vocab_size,
     embedding_size = 768
     hidden_size = int(config_params['hidden_size'])
     batch_size = int(config_params['batch_size'])
-
+    max_seq_len = 512
+    
     in_id = Input(shape=(max_seq_len,), name="input_ids")
     in_mask = Input(shape=(max_seq_len,), name="input_masks")
     in_segment = Input(shape=(max_seq_len,), name="segment_ids")
@@ -184,6 +185,7 @@ def multitask_attention_model(output_size, pos_vocab_size, lex_vocab_size,
     hidden_size = int(config_params['hidden_size'])
     batch_size = int(config_params['batch_size'])
     embedding_size = 768
+    max_seq_len = 512
 
     in_id = Input(shape=(max_seq_len,), name="input_ids")
     in_mask = Input(shape=(max_seq_len,), name="input_masks")
@@ -323,7 +325,7 @@ def multitask_seq2seq_model(output_size, pos_vocab_size,
     hidden_size = int(config_params['hidden_size'])
     batch_size = int(config_params['batch_size'])
     embedding_size = 768
-
+    max_seq_len = 512
     in_id = Input(shape=(max_seq_len,), name="input_ids")
     in_mask = Input(shape=(max_seq_len,), name="input_masks")
     in_segment = Input(shape=(max_seq_len,), name="segment_ids")
@@ -678,6 +680,7 @@ if __name__ == '__main__':
     lex_vocab_size = dataset.get("lex_vocab_size")
 
     model = multitask_seq2seq_model(output_size, pos_vocab_size, lex_vocab_size, config_params)
+
     # model = seq2seq_model(output_size, max_seq_len, config_params)
 
     # Instantiate variables

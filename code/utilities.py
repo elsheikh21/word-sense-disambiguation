@@ -27,9 +27,9 @@ def initialize_logger():
 
 def configure_tf():
     warnings.filterwarnings('ignore', category=FutureWarning)
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
     # Reduce logging output.
-    tf.logging.set_verbosity(tf.logging.INFO)
+    tf.logging.set_verbosity(tf.logging.ERROR)
     config = tf.ConfigProto()
     # dynamically grow the memory used on the GPU
     config.gpu_options.allow_growth = True
@@ -38,7 +38,7 @@ def configure_tf():
     config.allow_soft_placement = True
     # to log device placement (on which device the operation ran)
     config.log_device_placement = False
-    config.gpu_options.per_process_gpu_memory_fraction = 0.99
+    config.gpu_options.per_process_gpu_memory_fraction = 0.9
     # (nothing gets printed in Jupyter, only if you run it standalone)
     sess = tf.Session(config=config)
     # set this TensorFlow session as the default session for Keras
@@ -305,6 +305,17 @@ def split_datasets(semcor_omsti):
     logging.info('DONE WITH OMSTI')
 
 
+def get_lemma2synsets(path):
+    mappings, lines = {}, []
+    with open(path, encoding='utf-8', mode='r') as mappings_file:
+        lines = mappings_file.read().splitlines()
+    for line in tqdm(lines, desc='Building the mappings dictionary'):
+        lemma, synsets = line.split()[1], line.split()[2:]
+        lemma_ = lemma.split('#')[0]  # Lemma without the pos
+        mappings[lemma_] = [synset.strip() for synset in synsets]  # As some of the synsets has the "\n" at the  end
+    return mappings
+
+
 if __name__ == '__main__':
     semcor_omsti = os.path.join(os.getcwd(), 'data', 'training', 'WSD_Training_Corpora',
                                 'SemCor+OMSTI', 'semcor+omsti.data.xml')
@@ -315,3 +326,6 @@ if __name__ == '__main__':
 
     file_path_ = os.path.join(os.getcwd(), 'resources', 'babelnet2lexnames.tsv')
     babelnet_lex, lex_babelnet = build_bn2lex_dict(file_path_)
+
+    lemma2synsets_file_path = os.path.join(os.getcwd(), 'data', 'training', 'lemma2synsets4.0.xx.wn.ALL.txt')
+    lemma_synsets = get_lemma2synsets(lemma2synsets_file_path)

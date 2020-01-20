@@ -15,7 +15,6 @@ from tensorflow.keras.optimizers import Adadelta
 from keras_elmo import ElmoEmbeddingLayer
 from model_utils import visualize_plot_mdl, plot_history
 from parsing_dataset import load_dataset, multitask_train_generator
-from predict_utils import f1_m
 from utilities import configure_tf, initialize_logger, save_pickle
 
 

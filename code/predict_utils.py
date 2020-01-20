@@ -8,6 +8,18 @@ from tqdm import tqdm
 
 from parsing_dataset import create_mask
 
+try:
+    from langdetect import detect, DetectorFactory
+    from langdetect.lang_detect_exception import LangDetectException
+
+    DetectorFactory.seed = 0
+except ModuleNotFoundError:
+    os.system('pip install langdetect')
+    from langdetect import detect, DetectorFactory
+    from langdetect.lang_detect_exception import LangDetectException
+
+    DetectorFactory.seed = 0
+
 
 def build_gold(file_name):
     file_dict = dict()
@@ -79,29 +91,51 @@ def predict_sense(token):
     return token if synsets is None or len(synsets) else f'wn:{str(synsets[0].offset()).zfill(8)}{synsets[0].pos()}'
 
 
+def predict_multilingual_sense(word, word2idx, lemma_synsets=None, wordnet_babelnet=None):
+    candidates = lemma_synsets.get(word, [])
+    try:
+        if wordnet_babelnet:
+            word_lang = (detect(str(word))).lower()
+            # instead of implementing multiple if-else statements, i added them into a dictionary
+            # replicating switch cases
+            languages = {'fr': 'fra', 'it': 'ita', 'es': 'spa', 'en': 'eng'}
+            language = languages.get(word_lang)
+            if language:
+                wn_candidates = [f'wn:{str(synset.offset()).zfill(8)}{synset.pos()}'
+                                 for synset in wn.synsets(word, lang=language)]
+                bn_candidates = [wordnet_babelnet.get(candidate) for candidate in wn_candidates
+                                 if wordnet_babelnet.get(candidate)]
+                candidates.extend(bn_candidates)
+    except LangDetectException:
+        pass
+
+    candidates_ = [word2idx.get(f'{word}_{candidate}') for candidate in candidates
+                   if word2idx.get(f'{word}_{candidate}')]
+
+    try:
+        return candidates_[0]
+    except IndexError:
+        return None
+
+
 def test_generator(data_x, batch_size, output_size, use_elmo, mask_builder, tokenizer, use_bert):
     for start in range(0, len(data_x), batch_size):
         end = start + batch_size
-        data_x_ = data_x[start:end]
-        mask_builder_ = mask_builder[start:end]
+        data_x_, mask_builder_ = data_x[start:end], mask_builder[start:end]
 
-        max_len = len(max(data_x_, key=len))
-        pad_val = '<PAD>' if use_elmo else 0
-        data_x_ = pad_sequences(data_x_, padding='post', value=pad_val, maxlen=max_len, dtype=object)
+        pad_val, max_len = '<PAD>' if use_elmo else 0, len(max(data_x_, key=len))
+        data_x_ = pad_sequences(data_x_, padding='post', value=pad_val,
+                                maxlen=max_len, dtype=object)
 
-        if use_elmo:
-            _data_x = np.array([' '.join(x) for x in data_x_], dtype=object)
-            _data_x = np.expand_dims(_data_x, axis=-1)
-        else:
-            _data_x = data_x_
-
+        _data_x = np.expand_dims(np.array([' '.join(x) for x in data_x_],
+                                          dtype=object),
+                                 axis=-1) if use_elmo else np.array(data_x_)
         mask_x = create_mask(mask_builder_,
                              [data_x_.shape[0], data_x_.shape[1]],
                              tokenizer, output_size, use_bert=use_bert)
+        _mask_x = pad_sequences(np.array(mask_x), padding='post', value=0, maxlen=max_len)
 
-        mask_x = pad_sequences(np.array(mask_x), padding='post', value=0, maxlen=max_len)
-
-        yield _data_x, mask_x
+        yield _data_x, _mask_x
 
 
 if __name__ == '__main__':

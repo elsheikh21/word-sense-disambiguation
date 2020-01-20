@@ -21,7 +21,7 @@ class ElmoEmbeddingLayer(Layer):
 
     def _init_(self, **kwargs):
         self.dimensions = 1024
-        self.trainable = True
+        self.trainable = False
         super(ElmoEmbeddingLayer, self)._init_(**kwargs)
 
     def build(self, input_shape):
@@ -48,12 +48,13 @@ class ElmoEmbeddingLayer(Layer):
     @staticmethod
     def set_elmo_session():
         warnings.filterwarnings('ignore', category=FutureWarning)
-        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
         # Reduce logging output.
         tf.logging.set_verbosity(tf.logging.INFO)
         config = tf.ConfigProto()
         # dynamically grow the memory used on the GPU
         config.gpu_options.allow_growth = True
+        config.allow_soft_placement = True
         # to log device placement (on which device the operation ran)
         config.log_device_placement = False
         config.gpu_options.per_process_gpu_memory_fraction = 0.9

@@ -22,6 +22,9 @@ def train_model(model, dataset, config_params, use_elmo, shuffle=False):
                            datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     logger = TensorBoard(log_dir)
 
+    if not os.path.isdir('checkpoint'):
+        os.mkdir('checkpoint')
+
     check_dir = os.path.join("checkpoint", f'{name}.hdf5')
     model_chkpt = ModelCheckpoint(filepath=check_dir, monitor="loss", mode="min",
                                   save_best_only=True, save_weights_only=True, verbose=True)

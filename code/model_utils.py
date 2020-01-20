@@ -1,8 +1,10 @@
-import os
 import logging
+import os
 
 import matplotlib.pyplot as plt
 from tensorflow.keras.utils import plot_model
+
+from utilities import load_pickle
 
 
 def plot_history(history, save_to=None):
@@ -58,7 +60,8 @@ def plot_history(history, save_to=None):
 
 
 def visualize_plot_mdl(visualize, plot, model):
-    name = model._name if model._name is not None else 'Balabizo'  # Balabizo acts as placeholder
+    # Balabizo acts as placeholder
+    name = model._name if model._name is not None else 'Balabizo'
     if visualize:
         print(f'\n{name} Model Summary: \n')
         model.summary()
@@ -67,3 +70,10 @@ def visualize_plot_mdl(visualize, plot, model):
         plot_model(model, to_file=img_path, show_shapes=True)
         logging.info(f"{name} model image saved")
     logging.info(f"{name} model is created & compiled")
+
+
+if __name__ == '__main__':
+    history_path = os.path.join(
+        os.getcwd(), 'resources', 'SensEmbed_BiLSTM_ATT_MultiTask_history.pkl')
+    hist = load_pickle(history_path)
+    plot_history(hist)

@@ -8,8 +8,8 @@ from utilities import configure_workspace
 def parse_args():
     parser = ArgumentParser(
         description="Multilingual Word Sense Disambiguation")
-    parser.add_argument("--model_type", default='baseline', type=str)
-    parser.add_argument("--single_task_models", default=True, type=bool)
+    parser.add_argument("--model_type", default='attention', type=str)
+    parser.add_argument("--single_task_models", default=False, type=bool)
     parser.add_argument("--embeddings_file",
                         default='glove.twitter.27B.200d.txt', type=str)
     parser.add_argument("--embeddings_dimensions", default=200, type=int)
@@ -28,7 +28,3 @@ if __name__ == '__main__':
         build_train_model(parser_params, config_params, dataset)
     else:
         build_train_multitask_model(parser_params, config_params, dataset)
-
-# TODO: Make Readme more understandable, Add documentation
-# TODO: Add multilingual embeddings from SensEmBert
-# TODO: Run Models, Compute F1_Scores

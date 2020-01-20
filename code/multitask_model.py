@@ -13,15 +13,14 @@ from tensorflow.keras.optimizers import Adadelta
 
 from keras_elmo import ElmoEmbeddingLayer
 from model_utils import visualize_plot_mdl
-from parsing_dataset import load_dataset
+from parsing_dataset import load_multilingual
 from train_multitask import train_multitask_model
 from utilities import configure_tf, initialize_logger
-from predict_utils import f1_m
 
 
 def parse_args():
     parser = ArgumentParser(description="WSD")
-    parser.add_argument("--model_type", default='baseline', type=str,
+    parser.add_argument("--model_type", default='attention', type=str,
                         help="""Choose the model: baseline: BiLSTM Model.
                                 attention: Attention Stacked BiLSTM Model.
                                 seq2seq: Seq2Seq Attention.""")
@@ -87,18 +86,16 @@ def baseline_model(vocabulary_size, config_params,
     return model
 
 
-def attention_model(vocabulary_size, config_params, output_size,
-                    pos_vocab_size, lex_vocab_size,
-                    depth=2, visualize=False,
+def attention_model(vocabulary_size, config_params,
+                    output_size, pos_vocab_size,
+                    lex_vocab_size, visualize=False,
                     plot=False, tokenizer=None):
-    hidden_size = config_params['hidden_size']
+    hidden_size = int(config_params['hidden_size'])
     batch_size = int(config_params['batch_size'])
 
     input_type = 'string' if tokenizer is not None else None
     in_sentences = Input(shape=(None,), dtype=input_type,
                          batch_size=batch_size)
-    in_mask = Input(shape=(None, output_size), batch_size=batch_size,
-                    name='Candidate_Synsets_Mask')
 
     if tokenizer is not None:
         embedding = ElmoEmbeddingLayer()(in_sentences)
@@ -121,6 +118,8 @@ def attention_model(vocabulary_size, config_params, output_size,
                                  name='Attention')(bilstm)
 
     logits = TimeDistributed(Dense(output_size))(attention)
+    in_mask = Input(shape=(None, output_size), batch_size=batch_size,
+                    name='Candidate_Synsets_Mask')
     logits_mask = Add()([logits, in_mask])
 
     pos_logits = TimeDistributed(Dense(pos_vocab_size),
@@ -132,7 +131,7 @@ def attention_model(vocabulary_size, config_params, output_size,
     pos_output = Softmax(name="POS_output")(pos_logits)
     lex_output = Softmax(name="LEX_output")(lex_logits)
 
-    model = Model(inputs=[in_sentences, logits_mask],
+    model = Model(inputs=[in_sentences, in_mask],
                   outputs=[wsd_output, pos_output, lex_output],
                   name='BiLSTM_ATT_MultiTask')
 
@@ -206,7 +205,7 @@ def seq2seq_model(vocabulary_size, config_params, output_size,
     pos_output = Softmax(name="POS_output")(pos_logits)
     lex_output = Softmax(name="LEX_output")(lex_logits)
 
-    model = Model(inputs=[in_sentences, logits_mask],
+    model = Model(inputs=[in_sentences, in_mask],
                   outputs=[wsd_output, pos_output, lex_output],
                   name='Seq2Seq_MultiTask')
 
@@ -235,7 +234,8 @@ if __name__ == "__main__":
         configure_tf()
 
     elmo = config_params["use_elmo"]
-    dataset = load_dataset(elmo=elmo)
+    # dataset = load_dataset(elmo=elmo)
+    dataset = load_multilingual()
     vocabulary_size = dataset.get("vocabulary_size")
     output_size = dataset.get("output_size")
     tokenizer = dataset.get("tokenizer")
@@ -252,10 +252,10 @@ if __name__ == "__main__":
         history = train_multitask_model(model, dataset, config_params, elmo)
     elif params["model_type"] == "attention":
         attention_model = attention_model(vocabulary_size, config_params,
-                                          pos_vocab_size, lex_vocab_size,
-                                          output_size, tokenizer=tokenizer)
-        attention_history = train_multitask_model(attention_model, dataset,
-                                                  config_params, elmo)
+                                          output_size, pos_vocab_size,
+                                          lex_vocab_size, tokenizer=tokenizer,
+                                          visualize=True)
+        attention_history = train_multitask_model(attention_model, dataset, config_params, elmo)
     elif params["model_type"] == "seq2seq":
         seq2seq_model = seq2seq_model(vocabulary_size, config_params,
                                       pos_vocab_size, lex_vocab_size,

@@ -1,8 +1,8 @@
-epochs: 1
+epochs: 10
 batch_size: 16
 hidden_size: 128
 embedding_size: 400
-use_elmo: True
+use_elmo: False
 use_bert: False
 USE_CPU: False
-load_embeddings: False
+load_embeddings: True
