@@ -72,6 +72,13 @@ def visualize_plot_mdl(visualize, plot, model):
     logging.info(f"{name} model is created & compiled")
 
 
+def train_model_huge_dataset(dir_path, model):
+    # TODO: LOOP ON PICKLE FILES, LOAD THEM, TRAIN MODEL, COMPUTE F1 SCORE (ITERATIVELY)
+    # TODO: READ http://nlpprogress.com/english/word_sense_disambiguation.html
+    # TODO: READ ABOUT REGULARIZERS IN LSTMs
+    pass
+
+
 if __name__ == '__main__':
     history_path = os.path.join(
         os.getcwd(), 'resources', 'SensEmbed_BiLSTM_ATT_MultiTask_history.pkl')

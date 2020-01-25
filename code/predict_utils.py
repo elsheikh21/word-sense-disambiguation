@@ -88,7 +88,7 @@ def build_bn2domains_dict(file_path):
 
 def predict_sense(token):
     synsets = wn.synsets(token)
-    return token if synsets is None or len(synsets) else f'wn:{str(synsets[0].offset()).zfill(8)}{synsets[0].pos()}'
+    return token if synsets is None or not len(synsets) else f'wn:{str(synsets[0].offset()).zfill(8)}{synsets[0].pos()}'
 
 
 def predict_multilingual_sense(word, word2idx, lemma_synsets=None, wordnet_babelnet=None):

@@ -26,6 +26,12 @@ from utilities import (build_bn2dom_dict, build_bn2lex_dict, build_bn2wn_dict,
                        initialize_logger, load_pickle, save_pickle, get_lemma2synsets)
 
 
+# TODO: COMPUTE F1 SCORE USING CUSTOM FUNCTION
+# https://github.com/elsheikh21/sense_embeddings/blob/b51d5f68401c8599a1933df4cfd39cc5d0d2b726/code/model.py#L19
+# TODO: IMPLEMENT TRAINING ON MULTIPLE PKL FILES
+# https://github.com/elsheikh21/sense_embeddings/blob/b51d5f68401c8599a1933df4cfd39cc5d0d2b726/code/model.py#L134
+
+
 def parse_dataset(file_name, gold_dict, config_path, wordnet_babelnet,
                   babelnet_lex, babelnet_domain, save_to_paths=None, multilingual=False):
     """
@@ -101,7 +107,7 @@ def parse_dataset(file_name, gold_dict, config_path, wordnet_babelnet,
                             synset = wn.lemma_from_key(sense_key).synset()
                             synset_id = f"wn:{str(synset.offset()).zfill(8)}{synset.pos()}"
                             synset_id_ = wordnet_babelnet.get(synset_id)
-                            sentence_labeled[-1] = f'{synset_id_}' if not multilingual else f'{elem_lemma}_{synset_id_}'
+                            sentence_labeled[-1] = f'{synset_id_}' if not multilingual else f'{synset_id_}'
                             if synset_id_ is None:
                                 sentence_lex_labeled[-1] = 'factotum'
                                 sentence_domain_labeled[-1] = 'factotum'
@@ -867,7 +873,7 @@ def parse_onesec(file_name, gold_dict, config_params, babelnet_wordnet, babelnet
                     elem_id = elem.attrib['id']
                     sense_key = str(gold_dict.get(elem_id))
                     if sense_key is not None:
-                        sentence_labeled[-1] = f'{elem_lemma}_{sense_key}'
+                        sentence_labeled[-1] = f'{sense_key}'
                         sentence_lex_labeled[-1] = str(babelnet_lex.get(sense_key, 'factotum'))
                         sentence_domain_labeled[-1] = str(babelnet_domain.get(sense_key, 'factotum'))
                     else:

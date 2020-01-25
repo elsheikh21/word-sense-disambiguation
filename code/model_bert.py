@@ -25,7 +25,7 @@ except ModuleNotFoundError:
 from keras_bert import BertEmbeddingLayer
 from model_utils import visualize_plot_mdl, plot_history
 from parsing_dataset import load_dataset, bert_train_generator, bert_multitask_train_generator
-from utilities import configure_tf, initialize_logger, save_pickle
+from utilities import configure_workspace, save_pickle
 
 
 os.environ['TF_KERAS'] = '1'
@@ -35,7 +35,6 @@ except ModuleNotFoundError:
     os.system('pip install keras_self_attention')
     from keras_self_attention import SeqSelfAttention
 
-from keras_attention import Attention
 from tqdm import tqdm
 
 
@@ -207,7 +206,8 @@ def multitask_attention_model(output_size, pos_vocab_size, lex_vocab_size,
                                 ),
                            merge_mode='sum')(bert_output)
 
-    attention = SeqSelfAttention(attention_activation='sigmoid',
+    attention = SeqSelfAttention(units=128,
+                                 attention_activation='sigmoid',
                                  name='Attention')(bilstm)
 
     logits = TimeDistributed(Dense(output_size))(attention)
@@ -352,7 +352,7 @@ def multitask_seq2seq_model(output_size, pos_vocab_size,
 
     state_h = Concatenate()([forward_h, backward_h])
 
-    context, _  = Attention(hidden_size)([bilstm, state_h])
+    context = SeqSelfAttention(units=128)([bilstm, state_h])
 
     concat = Concatenate()([bilstm, context])
 
@@ -551,7 +551,7 @@ def train_model(model, dataset, config_params, use_elmo, shuffle=False):
                                                            False, mask_builder,
                                                            tokenizer, shuffle=shuffle),
                                       verbose=1, epochs=epochs,
-                                      steps_per_epoch=np.ceil(len(train_x) / batch_size),
+                                      steps_per_epoch=np.ceil(len(train_x[0]) / batch_size),
                                       callbacks=cbks)
         history_path = os.path.join(
             resources_path, f'{name}_history.pkl')
@@ -569,7 +569,7 @@ def train_model(model, dataset, config_params, use_elmo, shuffle=False):
             resources_path, f'{name}_weights.h5'))
 
 
-def train_multitask_model(model, dataset, config_params, use_elmo, shuffle=False):
+def train_multitask_model(model, dataset, config_params, use_elmo=False, shuffle=False):
     logging.info(f'Start training the {model._name} model.')
     name = model._name
     train_x, train_y = dataset.get('train_x'), dataset.get('train_y')
@@ -600,7 +600,7 @@ def train_multitask_model(model, dataset, config_params, use_elmo, shuffle=False
     try:
         history = model.fit_generator(bert_multitask_train_generator(train_x, train_y, pos_y, lex_y,
                                                                      batch_size, output_size,
-                                                                     use_elmo=False, mask_builder=mask_builder,
+                                                                     use_elmo=use_elmo, mask_builder=mask_builder,
                                                                      tokenizer=tokenizer, shuffle=shuffle),
                                       verbose=1, epochs=epochs,
                                       steps_per_epoch=np.ceil(len(train_x[0]) / batch_size),
@@ -664,13 +664,8 @@ if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
 
     params = parse_args()
-    initialize_logger()
-    configure_tf()
 
-    # Load our config file
-    config_file_path = os.path.join(os.getcwd(), "config.yaml")
-    config_file = open(config_file_path)
-    config_params = yaml.load(config_file)
+    config_params = configure_workspace()
     elmo = config_params["use_elmo"]
 
     dataset = process_bert_data()
@@ -679,9 +674,9 @@ if __name__ == '__main__':
     pos_vocab_size = dataset.get("pos_vocab_size")
     lex_vocab_size = dataset.get("lex_vocab_size")
 
-    model = multitask_seq2seq_model(output_size, pos_vocab_size, lex_vocab_size, config_params)
-
-    # model = seq2seq_model(output_size, max_seq_len, config_params)
+    model = multitask_attention_model(output_size, pos_vocab_size, lex_vocab_size, config_params)
+    # max_seq_len = 512
+    # model = attention_model(output_size, max_seq_len, config_params)
 
     # Instantiate variables
     initialize_vars(sess)

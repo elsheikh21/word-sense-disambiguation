@@ -1,3 +1,4 @@
+# TODO: AFTER READING DATASETS PERFORM BATCHING OF THEM IN PKL FILES OF 50K Statements
 import json
 import logging
 import os
@@ -5,6 +6,7 @@ import pickle
 import random
 import warnings
 import zipfile
+import nltk
 
 import numpy as np
 import tensorflow as tf
@@ -53,6 +55,10 @@ def configure_workspace():
     :return: config_params {dict}
     """
     initialize_logger()
+
+    nltk.download('wordnet', quiet=True)
+    nltk.download('punkt', quiet=True)
+    nltk.download('omw', quiet=True)
 
     # Load our config file
     config_file_path = os.path.join(os.getcwd(), "config.yaml")
@@ -314,6 +320,14 @@ def get_lemma2synsets(path):
         lemma_ = lemma.split('#')[0]  # Lemma without the pos
         mappings[lemma_] = [synset.strip() for synset in synsets]  # As some of the synsets has the "\n" at the  end
     return mappings
+
+
+def create_dataset_pickels(dataset, BATCHES=50_000):
+    train_x, train_y = dataset.get('train_x'), dataset.get('train_y')
+    train_x, train_y = dataset.get('train_x'), dataset.get('train_y')
+    pos_y, lex_y = dataset.get("pos_labeled_list"), dataset.get('lex_labeled_list')
+    # TODO: FINISH IMPLEMENTATION OF BATCHING THE DATASET
+    pass
 
 
 if __name__ == '__main__':

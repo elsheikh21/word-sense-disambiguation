@@ -1,5 +1,6 @@
 import logging
 import os
+from subprocess import Popen, PIPE
 
 import numpy as np
 
@@ -36,7 +37,7 @@ def predict_multilingual(input_path: str, output_path: str, resources_path: str,
     :param input_path: the path of the input file to predict in the same format as Raganato's framework (XML files you downloaded).
     :param output_path: the path of the output file (where you save your predictions)
     :param resources_path: the path of the resources folder containing your model and stuff you might need.
-    :param lang: the language of the dataset specified in input_path
+    :param lang: the language of the dataset specified in input_path, specify which model to load on which dataset 
     :return: None
     """
     # load the model
@@ -88,7 +89,7 @@ def predict_multilingual(input_path: str, output_path: str, resources_path: str,
             if len(mask_x[i][j]) == 2:  # So it is an instance
                 prediction = predictions[i][j]
                 prediction_sense_ = tokenizer.index_word.get(prediction, '<OOV>')
-                if 'bn:' not in prediction_sense_:
+                if 'wn:' not in prediction_sense_ or 'bn:' not in prediction_sense_:
                     # Fallback Strategy
                     prediction_sense = predict_multilingual_sense(word=word, word2idx=tokenizer.word_index,
                                                                   lemma_synsets=lemma_synsets,
@@ -119,6 +120,14 @@ def predict_multilingual(input_path: str, output_path: str, resources_path: str,
     # Compute F1_Score
     _, _, f1score, _ = precision_recall_fscore_support(ground_truth, _predictions, average='micro')
     print(f'{model._name} F1_score: {f1score}')
+
+
+def predictions_scorer():
+    cmd = f"javac {os.path.join(os.getcwd(), 'resources', 'scorer.java')}"
+    process = Popen(cmd.split(), stdout=PIPE)
+    outs, errs = process.communicate()
+    print(outs, errs)
+    # TODO: COMPLETE IMPLEMENTATION OF FUNCTION SCORER
 
 
 if __name__ == '__main__':
